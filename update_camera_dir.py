@@ -141,11 +141,13 @@ for ltr in ascii_uppercase:
 # the case where a professional camera has two cards
 #
 card_info = []
-for drive in mounted_drives:
-    for cam in camera_info:
-        if cam ['card_pattern'].match(drive['label']):
-            card_info.append(cam.copy())
-            card_info[-1]['card_path'] = drive['path']
+for drive in mounted_drives: #iterate over mounted drives
+    for cam in camera_info:  #for each mounted drive, iterate over our camera definition
+        if cam ['card_pattern'].match(drive['label']):  #if the current drive label matches the known camera label
+            card_info.append(cam.copy())                     #create a new card_info list element from the camera info
+            card_info[-1]['card_path'] = drive['path']       #add the drive path to the new card info
+            card_info[-1]['files_with_times'] = []           #add an empty list to hold the file paths and timestamps
+
 #
 # card_info will be an empty list if there are no memory cards mounted.
 #
@@ -153,11 +155,6 @@ for drive in mounted_drives:
 #
 if len(card_info) == 0:
     print('no camera card found')
-else:
-    for card in card_info:
-        print ('Camera: {}, Card Path: {}, Repository: {}'
-               .format(card['name'], card['card_path'], card['repository_base']))
-
 #
 # At this point, we have path data for all memory cards present. For each memory card, we want to catalog
 # each of its files with the following information:
@@ -181,7 +178,6 @@ for card in card_info:
     # a directory name which is the complete path to the directory containing the picture files, an empty
     # subdirectory list, and a list of file names.
     #
-    card_file_time_list = []
     for dir_name, subdir_list, file_list in os.walk(card['card_path']+'DCIM\\'):
         #
         # for each file in file_list, combine it with dir_name\ to form the full file path, then get its time
@@ -203,28 +199,24 @@ for card in card_info:
                 # create a tuple of full path file name and timestamp from the EXIF data, then add it to
                 # the camera card file list
                 #
-                file_and_time_stamp = (
-                    file_full_path,
-                    exiftime_to_file_prefix(str(tags['EXIF DateTimeOriginal'])))
-                card_file_time_list.append(file_and_time_stamp)
+
+                card['files_with_times'].append(
+                    (file_full_path,
+                    exiftime_to_file_prefix(str(tags['EXIF DateTimeOriginal']))))
             else:
                 #
                 # File without EXIF metadata: get the file creation date from the directory and format it
                 # to our timestamp prefix format. create a tuple of full path file name and this timestamp, then
                 # add it to the camera card file list
                 #
-                file_and_time_stamp = (
-                    file_full_path,
-                    datetime.fromtimestamp(os.path.getctime(file_full_path)).strftime('%y%m%d-%H%M%S'))
-                card_file_time_list.append(file_and_time_stamp)
 
-#
-# debug code: print card file time list
-#
-print('\nFile on memory card              Time stamp')
-for file,time in card_file_time_list:
-    print(file,time)
+                card['files_with_times'].append(
+                    (file_full_path,
+                    datetime.fromtimestamp(os.path.getctime(file_full_path)).strftime('%y%m%d-%H%M%S')))
 
-#
-# to do: individualize the camera card data structures.  I don't think this code will work with multiple cards.
-#
+for card in card_info:
+    print(card['name'],card['card_pattern'],card['repository_base'],card['card_path'])
+    for file_and_time in card['files_with_times']:
+        print
+        print(file_and_time)
+
