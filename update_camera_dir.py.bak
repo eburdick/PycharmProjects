@@ -1,0 +1,91 @@
+#!/usr/bin/python3
+import os
+
+#
+# 
+# The overall goal is to copy files from a camera memory card to the file respository on the computer that corresponds
+# to the camera the memory card came from. File names in the repository are of the form of a time code: YYYYMMDD-HHMMSS_
+# followed by the original file name, for example "20170417-130751_dsc_2930.nef" This started out as a camera file
+# without the time code: "dsc_2930.nef". The time code is appended by a script that copies the "time digitized" metadata
+# from the file and formats it into the chosen format. This pretty much guarantees that every file will have a unique
+# name over a very long time.
+#
+#     
+# Camera repository directory:
+#     The repository directory tree for each camera is just a set of directories named after the date the files are
+#     copied from the camera. It looks like this:
+#         base_directory
+#             2018-05-14
+#             2018-05-18
+#             More subdirectories in the format YYYY-MM-DD
+#     
+# File renaming:
+#     Before copying the files to the repository directory, we copy them to a temporary directory and rename them, 
+#     appending the time code as described above from the datetimeoriginal EXIF metadata. At that time, we may apply
+#     a correction if the camera clock was set wrong.
+# 
+# Program flow:
+#     - Scan storage devices plugged into the computer for known camera cards from our cameras. This assumes we know
+#     what name pattern to look for. If we find more than one camera card, we will deal with them one at a time, even
+#     if they come from the same camera.
+#
+#     - Once a camera card is identified, go to the corresponding camera repository and check for a subdirectory
+#     that corresponds to today.  If there is none, then create one.
+#
+#     - Scan and sort the entire camera repository and identify the newest file(s). There may be two with the same
+#     time stamp, one jpg and one raw. We will assume there are only two at most. (issue: we will need an algorithm
+#     to resolve that fact that the timestamps have only a one second resolution, and burst shots will create several
+#     files within a second. This can probably be resolved by looking at the camera assigned sequence number, but 
+#     there are special cases that can mess this up.)
+#
+#     - Scan and sort the entire memory card to find the first file(s) newer than the newest file(s) found in the
+#     repository.
+#
+#     - Copy the first newer file(s) and all later ones to the temporary rename directory.
+#
+#     - Scan the camera card and the repository to find any stragglers -- older files that did not get copied
+#     in the past. Put these where they belong in the repository and report to the user. This step could be done
+#     later if it makes sense...
+#
+#     - Run the rename and copy the renamed files to the new repository sub directory. Clock corrections should be
+#     done here, probably via a GUI designed for this purpose. Alternatively, this could be done later. There could
+#     be code added here to detect timestamps that do not make sense, like pictures taken in the middle of the night,
+#     and alert the user.
+#
+
+
+# Notes:
+#
+# Special case with d500: You can edit a raw file in camera and save it as a jpg file. The file name will be the next
+# one available and the datetime exif flag will be set to the time that new file was created.  The datetimeoriginal
+# exif flag is copied from the original file. The result of this is that a camera file with a larger file number than
+# another will not necessarily contain a newer image, but its timestamp prefix will reflect the original time, thus
+# listing files in order of name after renaming will result in a different order than the original un-named files. In
+# addition, it is possible that files edited in the camera may be copied to the computer on a later date. The policy
+# here will be to put such out of order files with the files from which they were derived, which means we must detect
+# this situation and deal with it as a special case.
+#    possible way of dealing with this: every repository directory contains all files generated during an interval of
+#    full days. This means that all new files get put into the corresponding directories even if they were generated
+#    inside of the camera at a much later date. This implies a two stage sorting process, first sorting new files by
+#    camera file number and renaming, then moving files to the repository based on timestamp (datetimeoriginal, which
+#    will be preppended to the file name by the renaming procedure.)  For this scheme, how do we decide which files
+#    on the camera card to process? The brute force way would be to process (copy and rename)all of the files on the
+#    card and copy to the corresponding repository directory, skipping duplicates, but this will be slow. Another way
+#    is to do it all based on file number and then detect which files are out of time sequence and move them as
+#    required as a post process.
+#
+#
+
+
+
+
+#
+# try some code from stackoverflow.com
+#
+
+camera_base = "g:\DCIM\100NIKON"
+
+
+[file for file in os.listdir(camera_base)]
+
+print(file)
