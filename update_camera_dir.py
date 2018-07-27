@@ -225,4 +225,6 @@ print('\nFile on memory card              Time stamp')
 for file,time in card_file_time_list:
     print(file,time)
 
-
+#
+# to do: individualize the camera card data structures.  I don't think this code will work with multiple cards.
+#
