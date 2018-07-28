@@ -86,8 +86,7 @@ import os
 import win32api
 import re
 import exifread
-from datetime import datetime
-
+from datetime import datetime, date
 from string import ascii_uppercase
 
 # utility function to reformat the EXIF time format to our file prefix format...
@@ -105,16 +104,21 @@ def exiftime_to_file_prefix (exif_time):
 camera_info = [
     {'name': 'Nikon D500',
      'card_pattern': re.compile('.*d500', re.IGNORECASE),
-     'repository_base': 'V:\\Camera-buf\\nikon-d500\\renamed copies of flash memory'},
+     'repository_base': 'V:\\Camera-buf\\nikon-d500\\renamed copies of flash memory\\'},
     {'name': 'Nikon B700',
      'card_pattern': re.compile('.*b700', re.IGNORECASE),
-     'repository_base': 'V:\\Camera-buf\\nikon-b700\\renamed copies of flash memory'}]
+     'repository_base': 'V:\\Camera-buf\\nikon-coolpix-b700\\renamed copies of flash memory\\'}]
 
 #
 # list of file extensions for picture files. We use this to distinguish these from video files when we get
 # exif information.
 #
 picture_extensions = ['.jpg', '.JPG', '.nef', '.NEF', '.nrw', '.NRW']
+#
+# get today's date.  This will be used to create directories in the repositories for new files on the camera cards
+#
+today = str(date.today())
+
 #
 # Find, and set up data structures for all camera cards plugged into the computer and mounted as drives.
 #
@@ -147,11 +151,9 @@ for drive in mounted_drives: #iterate over mounted drives
             card_info.append(cam.copy())                     #create a new card_info list element from the camera info
             card_info[-1]['card_path'] = drive['path']       #add the drive path to the new card info
             card_info[-1]['files_with_times'] = []           #add an empty list to hold the file paths and timestamps
-
+            card_info[-1]['new_repository_dir'] = cam['repository_base']+today
 #
 # card_info will be an empty list if there are no memory cards mounted.
-#
-# Temporary print calls here.
 #
 if len(card_info) == 0:
     print('no camera card found')
@@ -199,7 +201,6 @@ for card in card_info:
                 # create a tuple of full path file name and timestamp from the EXIF data, then add it to
                 # the camera card file list
                 #
-
                 card['files_with_times'].append(
                     (file_full_path,
                     exiftime_to_file_prefix(str(tags['EXIF DateTimeOriginal']))))
@@ -209,14 +210,84 @@ for card in card_info:
                 # to our timestamp prefix format. create a tuple of full path file name and this timestamp, then
                 # add it to the camera card file list
                 #
-
                 card['files_with_times'].append(
                     (file_full_path,
                     datetime.fromtimestamp(os.path.getctime(file_full_path)).strftime('%y%m%d-%H%M%S')))
 
+    #
+    # Sort the file list on the timestamp element. This is to handle files edited in the camera that will have
+    # camera assigned file numbers that appear to be out of sequence with their time stamp, or cases where the
+    # camera has started naming files again at 0001 or another out-of-sequence file name. We want to process these
+    # files in time stamp order.
+    #
+    # technical note: we set the sort key to be a function (lambda) that returns the item we want to sort on, which
+    # in this case is the second item of tuple that makes up an element of the list. The function
+    # lambda element: element[1], when passed a tuple, will return the second element of the tuple, which, in our case,
+    # is the file's timestamp.
+    #
+    card['files_with_times'].sort(key=lambda element: element[1])
+
+#
+# At this point, card_info is a list of dictionaries, one dictionary for each camera card. Each dictionary looks
+# like this:
+#
+# 'name': camera name, eg 'Nikon d500'
+# 'label': the volume label of the mounted memory card eg 'NIKON-D500'
+# 'card_path': the path to the memory card eg 'H:\'
+# 'card_pattern': regular expression to match with the volume label eg re.compile('.*d500', re.IGNORECASE)
+# 'repository_base': path to top directory of camera's file storage area, eg
+#                    'V:\Camera-buf\nikon-d500\renamed copies of flash memory\'
+# 'new_repository_dir': path to directory for new files named after today's date, eg
+#                    'V:\Camera-buf\nikon-d500\renamed copies of flash memory\2018-07-27'
+# 'files_with_times': a list of 2-tuples (fully expanded file name,time stamp in the form YYMMDD-HHMMSS)
+#                     eg [('H:\\DCIM\110NIKON\DSC_1234.NEF', '171224-173053')
+#                         ('H:\\DCIM\110NIKON\DSC_1234.JPG', '171224-173053')
+#                         ('H:\\DCIM\110NIKON\DSC_1235.NEF', '171224-173503')...]
+
+
+
+#
+# test prints
+#
 for card in card_info:
-    print(card['name'],card['card_pattern'],card['repository_base'],card['card_path'])
+    print(card['name'],card['card_pattern'],card['new_repository_dir'],card['card_path'],sep='\n')
     for file_and_time in card['files_with_times']:
-        print
         print(file_and_time)
 
+#
+# use new_repository_dir from each camera card dictionary to create a directory
+#
+for card in card_info:
+    if os.path.exists(card['new_repository_dir']):
+        print ('repository today directory exists')
+    else:
+        os.mkdir(card['new_repository_dir'])
+        print ('repository today directory created')
+
+print (today)
+print (type(today))
+
+
+#
+# to do...
+#
+# identify which files on the camera cards are already in the repository and remove their names from the card_info.
+#
+# first cut algorithm...for each camera card...
+#    find the last file in the corresponding repository
+#    check if that file is on the corresponding memory card
+#       if it is not, then there is no overlap, so we can just copy and rename the files to the new directory
+#       if it is, then there is overlap...
+#       scan backward in tandem and delete matching entries from the card_info list until the beginning is reached
+#          matching entries are those with the same timestamp and the same camera assigned name
+#       copy the new files to the new repository directory and rename it by appending the timestamp to the beginning
+#          and setting the file name to lower case.
+#
+# Things to deal with ...
+#    * Check for gap between the end of the repository and the beginning of the new files and at least report it
+#    * check for files that belong in an earlier repository directory like a file that was created in the camera by
+#    editing or conversion from raw to jpg. There should be code to deal with this.
+#    * think about how to bring in files from portable media that have backup copies of files from memory cards
+#    * make sure camera file number resets are handled.
+#
+3
