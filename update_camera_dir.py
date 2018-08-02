@@ -88,6 +88,7 @@
 
 
 import os
+import shutil
 import win32api
 import re
 import exifread
@@ -308,33 +309,34 @@ for cam in camera_info:
 # test prints
 #
 for cam in camera_info:
-    print(cam['name'], 'last file = ',
-          "{0}{1}{2}".format(cam['repository_base'], cam['repository_last_dir'], cam['repository_last_file']))
+    if 'repository_last_dir' in cam:
+        print(cam['name'], 'last file = ',
+              "{0}{1}{2}".format(cam['repository_base'], cam['repository_last_dir'], cam['repository_last_file']))
 
+#
+# For each camera, iterate though its files_with_times list, copying each file from the memory card to the
+# camera's new_repository_dir. The file_with_times list is in reverse order, so the newest files will be copied
+# first. Before each copy, we check see if the file is newer than the last repository file, and when this fails to be
+# the case, we break out of the loop.
+#
 for cam in camera_info:
     for file_and_time in cam['files_with_times']:
+        last_file_timestamp = cam['repository_last_file'][0:15]
+        if file_and_time[1] > last_file_timestamp:
+            print(file_and_time,last_file_timestamp)
+            #get base filename
+            sourcepath,base_filename = os.path.split(file_and_time[0])
+            new_filename = (file_and_time[1] + '_' + base_filename).lower()
+            shutil.copy2(file_and_time[0],os.path.join(cam['new_repository_dir'],new_filename))
 
-        if file_and_time[1] > cam['repository_last_file'][0:15]:
-            print(file_and_time,cam['repository_last_file'][0:15])
+        else:
+            break
+
+
 #
 # to do...
 #
-# identify which files on the camera cards are already in the repository and remove their names from the cam_cards_info.
-#
-# first cut algorithm...for each camera card...
-#    find the last file in the corresponding repository - done
-#    check if that file is on the corresponding memory card
-#       if it is not, then there is no overlap, so we can just copy and rename the files to the new directory
-#       if it is, then there is overlap...
-#       scan backward in tandem and delete matching entries from the cam_info list until the beginning is reached
-#          matching entries are those with the same timestamp and the same camera assigned name
-#       copy the new files to the new repository directory and rename it by appending the timestamp to the beginning
-#          and setting the file name to lower case.
-#
-# Things to deal with ...
-#    * Check for gap between the end of the repository and the beginning of the new files and at least report it
-#    * check for files that belong in an earlier repository directory like a file that was created in the camera by
-#    editing or conversion from raw to jpg. There should be code to deal with this.
-#    * think about how to bring in files from portable media that have backup copies of files from memory cards
-#    * make sure camera file number resets are handled.
-#
+# Provide a mechanism for filling in the gaps in case a second card is being used to update a camera. real world case:
+# SD card from d500 has been loaded, but there are files on the XQD card that fill in a gap. This card does not load
+# because the latest file now in the d500 repository is later than any files on this card.  There needs to be a search
+# for the gap to take care of this situation.
