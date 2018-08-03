@@ -138,7 +138,20 @@ camera_info = [
 # list of file extensions for picture files. We use this to distinguish these from video files when we get
 # exif information.
 #
-picture_extensions = ['.jpg', '.JPG', '.nef', '.NEF', '.nrw', '.NRW']
+PICTURE_EXTENSIONS = ['.jpg', '.JPG', '.nef', '.NEF', '.nrw', '.NRW']
+#
+# index constants for files_with_times tuple
+#
+FILENAME = 0
+TIMESTAMP = 1
+#
+# index constants for os.path.splittext
+#
+EXTENSION = 1
+#
+# index constants for win32api.GetVolumeInformation
+#
+VOLUME_NAME = 0
 #
 # get today's date.  This will be used to create directories in the repositories for new files on the camera cards
 #
@@ -159,7 +172,7 @@ for ltr in ascii_uppercase:
     drive_path = ltr + ':\\'
     if os.path.exists(drive_path):
         mounted_drives.append(
-            {'label': win32api.GetVolumeInformation(drive_path)[0],
+            {'label': win32api.GetVolumeInformation(drive_path)[VOLUME_NAME],
              'path': drive_path})
 
 #
@@ -228,9 +241,9 @@ for cam in camera_info:
                 #
                 for file in file_list:
                     file_full_path = dir_name+'\\'+file
-                    file_extension = os.path.splitext(file)[1]
+                    file_extension = os.path.splitext(file)[EXTENSION]
 
-                    if file_extension in picture_extensions:
+                    if file_extension in PICTURE_EXTENSIONS:
                         #
                         # Picture file with EXIF metadata: Open the file and get the DateTimeOriginal metadata
                         #
@@ -241,8 +254,8 @@ for cam in camera_info:
                         # the camera card file list
                         #
                         cam['files_with_times'].append(
-                                                (file_full_path,
-                                                exiftime_to_file_prefix(str(tags['EXIF DateTimeOriginal']))))
+                                                       (file_full_path,
+                                                        exiftime_to_file_prefix(str(tags['EXIF DateTimeOriginal']))))
                     else:
                         #
                         # File without EXIF metadata: get the file creation date from the directory and format it
@@ -252,9 +265,8 @@ for cam in camera_info:
                         # Technical note: strftime format %Y means 4 digit year including century (vs %y for 2 digit
                         # year), %H means hours on 24 hour clock (vs %I for 12 hour clock with %p for am/pm)
                         #
-                        cam['files_with_times'].append(
-                            (file_full_path,
-                            datetime.fromtimestamp(os.path.getctime(file_full_path)).strftime('%Y%m%d-%H%M%S')))
+                        cam['files_with_times'].append((file_full_path, datetime.fromtimestamp
+                                                        (os.path.getctime(file_full_path)).strftime('%Y%m%d-%H%M%S')))
         #
         # Sort the file list on the timestamp element. This is to handle files edited in the camera that will have
         # camera assigned file numbers that appear to be out of sequence with their time stamp, or cases where the
@@ -263,10 +275,10 @@ for cam in camera_info:
         #
         # technical note: we set the sort key to be a function (lambda) that returns the item we want to sort on, which
         # in this case is the second item of tuple that makes up an element of the list. The function
-        # lambda element: element[1], when passed a tuple, will return the second element of the tuple, which, in our
-        # case, is the file's timestamp.
+        # lambda element: element[TIMESTAMP], when passed a tuple, will return the second element of the tuple,
+        # which, in our case, is the file's timestamp.
         #
-        cam['files_with_times'].sort(reverse=True, key=lambda element: element[1])
+        cam['files_with_times'].sort(reverse=True, key=lambda element: element[TIMESTAMP])
 #
 # test prints
 #
@@ -287,23 +299,32 @@ for cam in camera_info:
             os.mkdir(cam['new_repository_dir'])
             print('repository today directory created')
         #
-        # Traverse the repositories backward to find the last files. This may start with the empty directory just
-        # created and keep going until it finds a directory that has files. It could also start with a directory
-        # that was already created today from a different memory card from the same camera.
+        # Traverse the repositories backward to find the last files. We will skip the last directory because that
+        # is either empty or may exist because of an earlier run of this code in the same day. We want the last
+        # file before today, because we may have run a different card from the same camera today.
         #
         # technical note: we sort the lists returned by os.listdir() because the order of the list it returns is
         # not in the spec.
         #
         dirlist = list(sorted(os.listdir(cam['repository_base']), reverse=True))
+        skip_dir = True
         for directory in dirlist:
+            # skip the newest directory
+            if skip_dir:
+                skip_dir = False
+                continue
             filelist = os.listdir(cam['repository_base']+directory)
             print(directory)
             cam['repository_last_dir'] = directory + '\\'
+            # skip directory if it is empty
             if len(filelist) == 0:
                 continue
             else:
+                # newest file is the last file in the last populated directory. This assumes all of the file names
+                # start with a timestamp string, which is our naming standard.
                 cam['repository_last_file'] = sorted(filelist)[-1]
                 break
+
 
 #
 # test prints
@@ -315,28 +336,42 @@ for cam in camera_info:
 
 #
 # For each camera, iterate though its files_with_times list, copying each file from the memory card to the
-# camera's new_repository_dir. The file_with_times list is in reverse order, so the newest files will be copied
-# first. Before each copy, we check see if the file is newer than the last repository file, and when this fails to be
-# the case, we break out of the loop.
+# camera's new_repository_dir, changing the file name to add the timestamp to the beginning of the file with '_' as a
+# separator and lower casing. EG "20180523-112822_dscn0111.jpg". The file_with_times list is in reverse order, so the
+# newest files will be copied first. Before each copy, we check see if the file is newer than the last repository
+# file, and when this fails to be the case, we break out of the loop.
 #
 for cam in camera_info:
     for file_and_time in cam['files_with_times']:
         last_file_timestamp = cam['repository_last_file'][0:15]
-        if file_and_time[1] > last_file_timestamp:
-            print(file_and_time,last_file_timestamp)
-            #get base filename
-            sourcepath,base_filename = os.path.split(file_and_time[0])
-            new_filename = (file_and_time[1] + '_' + base_filename).lower()
-            shutil.copy2(file_and_time[0],os.path.join(cam['new_repository_dir'],new_filename))
-
+        # check if the file is newer than the last file in the existing repository. If not, we are done.
+        if file_and_time[TIMESTAMP] > last_file_timestamp:
+            sourcepath, base_filename = os.path.split(file_and_time[FILENAME])  # get base filename
+            # create new target name with timestamp_
+            new_filename = (file_and_time[TIMESTAMP] + '_' + base_filename).lower()
+            dest_path = os.path.join(cam['new_repository_dir'], new_filename)
+            # check if the target file in the repository already exists.  If so, skip the copy.
+            if os.path.exists(dest_path):
+                print('Skipping copy to {}. File already exists.'.format(dest_path))
+                continue
+            else:
+                shutil.copy2(file_and_time[FILENAME], dest_path)  # copy to repository
+                print('copied {} to {}'.format(file_and_time[FILENAME], dest_path))
         else:
+            # we have already copied the files newer than the newest repository entry
             break
 
 
 #
 # to do...
 #
-# Provide a mechanism for filling in the gaps in case a second card is being used to update a camera. real world case:
-# SD card from d500 has been loaded, but there are files on the XQD card that fill in a gap. This card does not load
-# because the latest file now in the d500 repository is later than any files on this card.  There needs to be a search
-# for the gap to take care of this situation.
+# Make this code useful outside of the IDE
+#
+# Add GUI? Only if we want to do something special maybe...
+#     Manually override things like the last file in the repository to pick up old missed updates
+#     GUI to correct timestamps in the archive for time zone shift or missed DST switches
+#     GUI to correct timestamps for synchronizing cameras
+#     Manual copies
+#     Scanning for missing files in the repository
+#     Copying from portable portable backup storage after a trip, creating muliple repository directories
+
