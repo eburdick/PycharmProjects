@@ -176,11 +176,10 @@ for ltr in ascii_uppercase:
              'path': drive_path})
 
 #
-# scan all drive labels for matches to our camera cards. Where a match is found, add an element to the
-# cam_cards_info list. Each element of this list is a dictionary identical to the camera_info dictionary
-# corresponding to the camera memory card label with the addition of the path to the camera memory card.
-# If there are more than one card from a camera, there will be an element in cam_cards_info for each. This covers
-# the case where a professional camera has two cards
+# scan all drive labels for matches to our camera cards. Where a match is found:
+#     Increment cam_cards_count
+#     Add the card's path to 'card_path_list' in the camera's camera_info dictionary
+#
 #
 cam_cards_count = 0
 for drive in mounted_drives:  # iterate over mounted drives
