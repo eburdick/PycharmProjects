@@ -385,15 +385,41 @@ def add_camcards_summary():
     #
     # This function goes through the camera card file data and create summary information for the GUI.
     #
-    # First pass: For each camera, we scan the files on its camera cards and create a nested summary datastructure with
-    # the dictionary key 'card_summary' as follows...
+    # The summary information is a series of nested lists...
     #
-    # cam['card_summary'] =
-    #     [card_path,
-    #       [directory,
-    #         (date, first_file, last_file)...all dates
-    #       ]...all directories
-    #     ]...all cards
+    # date_file_entry --> ['YYMMDD', firstfile, lastfile]          Block of files from a specific date
+    # date_file_list  --> [date_file_entry...]                     List of date file entries
+    # dir_entry       --> [dir, date_entry_list]                   directory with a list of date file entries
+    # dir_list        --> [dir_entry...]                           list of dir entries
+    # path_entry      --> [path, dir_list]                         path with a dir list
+    # path_list       --> [path_entry...]                          list of path entries
+    #
+    # path_list gets copied to camera_data[n] as camera_data[n]['summary-info']
+    #
+    # This list nesting is set up so we can build and nest the lists from the bottom up using the following
+    # methods...
+    #
+    # date_file_entry = []
+    # date_file_entry.append(date)
+    # date_file_entry.append(firstfile)
+    # date_file_entry.append(lastfile)
+    #
+    # date_file_list = []
+    # date_file_list.append(date_file_entry)
+    #
+    # dir_entry = []
+    # dir_entry.append(dir)
+    # dir_entry.append(date_file_list)
+    #
+    # dir_list = []
+    # dir_list.append(dir_entry)
+    #
+    # path_entry = []
+    # path_entry.append(path)
+    # path_entry.append(dir_list)
+    #
+    # path_list = []
+    # path_list.append(path_entry)
     #
     # We get this information by parsing the camera's files_and_names list. Example:
     # H:\DCIM\103ND500\DSC_1516.JPG 20180729-151337
@@ -403,19 +429,101 @@ def add_camcards_summary():
     # file = DSC_1516.JPG
     # renamed file = 20180729-151337_dsc_1516.jpg (possible alternative summary information)
     #
-    # Technical note: the file_with_times list is sorted by timestamp, newest first, so if we do a one-pass
+    # Technical note: the file_with_times list is sorted by timestamp, so if we do a one-pass
     # scan, we could end up with more than one listing for a card_path or a directory. This will not happen
     # very often and if it does, this imparts useful information, so we will let it happen.
     #
     for cam in camera_info:
-        if 'file_with_times' in cam:
-            summary_path = ''
-            summary_dir = ''
-            summary_date = ''
-            for path, timestamp in cam['files_with_times']:
-                noop = 1;
+        if 'files_with_times' in cam:
 
+            #
+            # make a copy of the camera's file_with_times list and reverse it so we have it in forward chronological
+            # order.
+            #
+            files_with_times = cam['files_with_times'][:]
+            files_with_times.reverse()
+            #
+            # initialize running values. We add new summary data each time we get a new value
+            #
+            old_path = ''
+            old_dir = ''
+            old_date = ''
+            # last_file = ''
+            new_file = ''
+            date_file_entry = None
+            #
+            # create empty path_list.  This will be built on the create our summary data.
+            #
+            path_list = []
+            for full_path, timestamp in files_with_times:
+                #
+                # Iterate through files_with_times
+                #
+                #
+                # Parse the list element
+                #
+                path_tokens = full_path.split(sep='\\')
+                timestamp_tokens = timestamp.split(sep='-')
+                new_path = path_tokens[0]+'\\'+path_tokens[1]+'\\'
+                new_dir = path_tokens[2]
+                new_date = timestamp_tokens[0]
+                last_file = new_file        # save old file value for use as last_file.
+                new_file = path_tokens[3]
+                #
+                # If the path, the directory and the date are the same as the previous iteration, we create
+                # no new summary information
+                #
+                if new_path == old_path and new_dir == old_dir and new_date == old_date:
+                    continue
+                #
+                # if we get here, something has changed, so we will be starting a new list. First, we finish up
+                # the current date_file_entry by adding the last file, which is new_file from the previous iteration.
+                # The date_file_list that contains this entry is already in the datastructure, so we are adding it
+                # in place. This operation is only done if this not the first iteration, so we test to see that
+                # date_file_entry is not in its initial state.
+                #
+                if date_file_entry:
+                    date_file_entry.append(last_file)
+                #
+                # no matter what has changed, we will need a new date_file_entry, so we create it here
+                #
+                date_file_entry = [new_date, new_file]
+                #
+                # if only the date has changed, we just add the new date_file_entry to the current date_file_list.
+                # We also update old_date to this new date for the next time this test is made
+                #
+                if new_path == old_path and new_dir == old_dir and new_date != old_date:
+                    date_file_list.append(date_file_entry)
+                    old_date = new_date
+                    continue
+                #
+                # if the directory has changed but the path is the same, then we need to add a directory entry
+                # to the current dir_list, but first, we create a new date_file_list with the date_file_entry
+                # we just created and use it to create the dir_entry. We also copy the new dir to old_dir for
+                # the next time this test is made
+                #
+                if new_path == old_path and new_dir != old_dir:
+                    date_file_list = [date_file_entry]
+                    dir_entry = [new_dir, date_file_list]
+                    dir_list.append(dir_entry)
+                    old_dir = new_dir
+                    old_date = new_date
+                    continue
+                #
+                # if the path has changed, we need to add a new path element and all of the nested lists
+                # under it. We also set old_path to this new path for the next time this test is made
+                #
+                if new_path != old_path:
+                    date_file_list = [date_file_entry]
+                    dir_entry = [new_dir, date_file_list]
+                    dir_list=[dir_entry]
+                    path_entry = [new_path, dir_list]
+                    path_list.append(path_entry)
+                    old_path = new_path
+                    old_dir = new_dir
+                    old_date = new_date
 
+            cam['summary_info'] = path_list
 
     return
 
@@ -433,6 +541,11 @@ def getcard_clicked():
     # disable the button to avoid loading the camera card a second time.
     get_card_info_button.config(state=DISABLED)
     set_repos_button.config(state=NORMAL)
+
+    add_camcards_summary()
+    for cam in camera_info:
+        if 'summary_info' in cam:
+            print (cam['summary_info'])
 
     # put file camera card file lists on the list box.
     for cam in camera_info:
