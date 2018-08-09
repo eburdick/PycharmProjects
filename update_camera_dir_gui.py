@@ -90,18 +90,54 @@
 import os
 import shutil
 import win32api
+import win32file
+import pywintypes
+import win32con
 import re
 import exifread
 from datetime import datetime, date
 from string import ascii_uppercase
 from tkinter import *
+from datetime import datetime
 
-
+#
 # utility function to reformat the EXIF time format to our file prefix format...
 # YYYY:MM:DD HH:MM:SS --> YYYYMMDD-HHMMSS.
 #
+
+
 def exiftime_to_file_prefix(exif_time):
     return exif_time[0:4]+exif_time[5:7]+exif_time[8:10]+'-'+exif_time[11:13]+exif_time[14:16]+exif_time[17:19]
+
+#
+# Function to change all three timestamps of a file...creation time, modify time and access time. We will use
+# this for matching these timestamps in picture files to the EXIF metadata in the file. This helps with the
+# problem of burst photos taken several a second having file timestamps that are off by a couple of seconds because
+# they are written to the memory card from the camera buffer in an unpredictable order.  The EXIF original time tag
+# records when the picture was captured, not when it was written to the memory card.
+#
+
+
+def change_file_times(fname, timestamp):
+    newtime = datetime.strptime(timestamp, '%Y%m%d-%H%M%S')  # format matches our renamed file timestamp prefix
+    wintime = pywintypes.Time(newtime)
+    #
+    # create a windows file object from the specified existing file
+    #
+    winfile = win32file.CreateFile(
+        fname, win32con.GENERIC_WRITE,
+        win32con.FILE_SHARE_READ | win32con.FILE_SHARE_WRITE | win32con.FILE_SHARE_DELETE,
+        None, win32con.OPEN_EXISTING,
+        win32con.FILE_ATTRIBUTE_NORMAL, None)
+    #
+    # Set the file                  create, modify & access times
+    #
+    win32file.SetFileTime(winfile, wintime, wintime, wintime)
+    #
+    # We must close the file because it was opened by the OS
+    #
+    winfile.close()
+    return
 
 
 #
@@ -153,6 +189,16 @@ EXTENSION = 1
 # index constants for win32api.GetVolumeInformation
 #
 VOLUME_NAME = 0
+#
+# index constants for the summary_info lists
+#
+CARDINFOPATH = 0
+CARDINFODIRLIST = 1
+DIRINFODIR = 0
+DIRINFODATELIST = 1
+DATEINFODATE = 0
+DATEINFOFIRSTFILE = 1
+DATEINFOLASTFILE = 2
 #
 # get today's date.  This will be used to create directories in the repositories for new files on the camera cards
 #
@@ -274,17 +320,20 @@ def get_cam_cards_info():
                                 (file_full_path, datetime.fromtimestamp
                                  (os.path.getctime(file_full_path)).strftime('%Y%m%d-%H%M%S')))
             #
-            # Sort the file list on the timestamp element. This is to handle files edited in the camera that will have
-            # camera assigned file numbers that appear to be out of sequence with their time stamp, or cases where the
-            # camera has started naming files again at 0001 or another out-of-sequence file name. We want to process
-            # these files in time stamp order. We reverse the order because we want to scan in reverse later.
+            # Sort the file list on the timestamp element followed by file name, which are the two fields that will
+            # make up the filename as renamed in the repository. We reverse the order because we want to scan in
+            # reverse order later.
             #
             # technical note: we set the sort key to be a function (lambda) that returns the item we want to sort on,
-            # which in this case is the second item of tuple that makes up an element of the list. The function
-            # lambda element: element[TIMESTAMP], when passed a tuple, will return the second element of the tuple,
-            # which, in our case, is the file's timestamp.
+            # which in this case is the timestamp followed by the file name. The key function
+            # lambda element: element[TIMESTAMP]+element[FILENAME].split(sep='\\')[3]) returns a string
+            # (timestamp + filename) that is used for doing the comparisons durring the sort. "element" here is one of
+            # tuples making up the list we are sorting...(full path file name, timestamp) and the function parses out
+            # the base file name and adds it to the end of the timestamp string.
             #
-            cam['files_with_times'].sort(reverse=True, key=lambda element: element[TIMESTAMP])
+            # cam['files_with_times'].sort(reverse=True, key=lambda element: element[TIMESTAMP])
+            cam['files_with_times'].sort(reverse=True,
+                                         key=lambda element: element[TIMESTAMP]+element[FILENAME].split(sep='\\')[3])
     #
     # test prints
     #
@@ -346,8 +395,9 @@ def make_today_dir():
 # For each camera, iterate though its files_with_times list, copying each file from the memory card to the
 # camera's new_repository_dir, changing the file name to add the timestamp to the beginning of the file with '_' as a
 # separator and lower casing. EG "20180523-112822_dscn0111.jpg". The file_with_times list is in reverse order, so the
-# newest files will be copied first. Before each copy, we check see if the file is newer than the last repository
-# file, and when this fails to be the case, we break out of the loop.
+# newest files will be copied first. To make sure the file's timestamps match the timestamp prefix, we also modify
+# the file's create, modify and access metadata to match it. Before each copy, we check see if the file is newer than
+# the last repository file, and when this fails to be the case, we break out of the loop.
 #
 
 
@@ -367,6 +417,7 @@ def copy_and_rename():
                     continue
                 else:
                     shutil.copy2(file_and_time[FILENAME], dest_path)  # copy to repository
+                    change_file_times(dest_path, file_and_time[TIMESTAMP])
                     print('copied {} to {}'.format(file_and_time[FILENAME], dest_path))
             else:
                 # we have already copied the files newer than the newest repository entry
@@ -396,30 +447,6 @@ def add_camcards_summary():
     #
     # path_list gets copied to camera_data[n] as camera_data[n]['summary-info']
     #
-    # This list nesting is set up so we can build and nest the lists from the bottom up using the following
-    # methods...
-    #
-    # date_file_entry = []
-    # date_file_entry.append(date)
-    # date_file_entry.append(firstfile)
-    # date_file_entry.append(lastfile)
-    #
-    # date_file_list = []
-    # date_file_list.append(date_file_entry)
-    #
-    # dir_entry = []
-    # dir_entry.append(dir)
-    # dir_entry.append(date_file_list)
-    #
-    # dir_list = []
-    # dir_list.append(dir_entry)
-    #
-    # path_entry = []
-    # path_entry.append(path)
-    # path_entry.append(dir_list)
-    #
-    # path_list = []
-    # path_list.append(path_entry)
     #
     # We get this information by parsing the camera's files_and_names list. Example:
     # H:\DCIM\103ND500\DSC_1516.JPG 20180729-151337
@@ -427,14 +454,18 @@ def add_camcards_summary():
     # directory = 103ND500
     # date = 20180729
     # file = DSC_1516.JPG
-    # renamed file = 20180729-151337_dsc_1516.jpg (possible alternative summary information)
     #
     # Technical note: the file_with_times list is sorted by timestamp, so if we do a one-pass
-    # scan, we could end up with more than one listing for a card_path or a directory. This will not happen
+    # scan, we could end up with more than one listing for a card_path or a directory depending on camera settings,
+    # cards removed and added, etc This will not happen
     # very often and if it does, this imparts useful information, so we will let it happen.
     #
     for cam in camera_info:
-        if 'files_with_times' in cam:
+        #
+        # Test to see if one or more memory cards for this camera were found.  If so, create the summary
+        # information for the cards
+        #
+        if 'card_path_list' in cam:
 
             #
             # make a copy of the camera's file_with_times list and reverse it so we have it in forward chronological
@@ -448,13 +479,15 @@ def add_camcards_summary():
             old_path = ''
             old_dir = ''
             old_date = ''
-            # last_file = ''
             new_file = ''
             date_file_entry = None
             #
             # create empty path_list.  This will be built on the create our summary data.
             #
             path_list = []
+            date_file_list = []  # initialize to prevent Pycharm warning. This value is never used.
+            dir_list = []        # initialize to prevent Pycharm warning. This value is never used.
+
             for full_path, timestamp in files_with_times:
                 #
                 # Iterate through files_with_times
@@ -516,13 +549,28 @@ def add_camcards_summary():
                 if new_path != old_path:
                     date_file_list = [date_file_entry]
                     dir_entry = [new_dir, date_file_list]
-                    dir_list=[dir_entry]
+                    dir_list = [dir_entry]
                     path_entry = [new_path, dir_list]
                     path_list.append(path_entry)
                     old_path = new_path
                     old_dir = new_dir
                     old_date = new_date
 
+            #
+            # At this point, all of the files have been processed, but the last file has not been added to the
+            # date_file_entry, because there was no change in path, directory or date detected. The last file is
+            # actually the current new_file, because that is the last one we picked up from the date_file_list. We
+            # append this to the last date_file_entry in the for loop else clause, which is the end of loop cleanup
+            # clause. Note that because there is no break in the loop, the else part is not strictly needed, but
+            # this makes it more clear.
+            #
+            else:
+                if date_file_entry:
+                    date_file_entry.append(new_file)
+
+            #
+            # copy the reference to the path list into the camera's summary_info slot.
+            #
             cam['summary_info'] = path_list
 
     return
@@ -530,6 +578,8 @@ def add_camcards_summary():
 #
 # Widget Callbacks
 #
+
+
 def exit_button_clicked():
     exit()
     return
@@ -541,16 +591,43 @@ def getcard_clicked():
     # disable the button to avoid loading the camera card a second time.
     get_card_info_button.config(state=DISABLED)
     set_repos_button.config(state=NORMAL)
-
+    #
+    # create the camera memory card summary
+    #
     add_camcards_summary()
+
+    #
+    # put file camera card summaries on the list box. Format:
+    #
+    # Camera name 1
+    #    card path 1
+    #       directory1
+    #          date1, first file, last file
+    #          ...
+    #          dateN
+    #       ...
+    #          ...
+    #       directoryN
+    #          ...
+    #    ...
+    #    card path N
+    #       ...
+    #          ...
+    # ...
+    # Camera name N
+    #
+
     for cam in camera_info:
         if 'summary_info' in cam:
-            print (cam['summary_info'])
-
-    # put file camera card file lists on the list box.
-    for cam in camera_info:
-        for file_time in cam['files_with_times']:
-            cardfiles_list_box.insert(END, file_time[0])
+            cardfiles_list_box.insert(END, cam['name'])
+            for card_info in cam['summary_info']:
+                cardfiles_list_box.insert(END, '   {}'.format(card_info[CARDINFOPATH]))
+                for dir_info in card_info[CARDINFODIRLIST]:
+                    cardfiles_list_box.insert(END, '      {}'.format(dir_info[DIRINFODIR]))
+                    for date_info in dir_info[DIRINFODATELIST]:
+                        cardfiles_list_box.insert(
+                            END, '         {}: {} - {}'.format(
+                                date_info[DATEINFODATE], date_info[DATEINFOFIRSTFILE], date_info[DATEINFOLASTFILE]))
     return
 
 
@@ -576,7 +653,7 @@ window.geometry("800x600")
 list_frame = Frame(window, relief=SUNKEN, border=2)
 
 # Create the card file list box, its scrollbar, and the button that populates it
-cardfiles_list_box = Listbox(list_frame, height=30, width=40, border=0, selectmode=EXTENDED)
+cardfiles_list_box = Listbox(list_frame, height=30, width=50, border=0, selectmode=EXTENDED)
 get_card_info_button = Button(window, text='Get Cam Cards', command=getcard_clicked)
 set_repos_button = Button(window, text='Set Repository', command=setrepos_clicked)
 set_repos_button.config(state=DISABLED)
@@ -593,11 +670,11 @@ cardfiles_list_box.config(yscrollcommand=list_scrollbar.set)
 # Create the exit button
 exit_button = Button(window, text='Exit', command=exit_button_clicked)
 
-# Physicaly place the widgets
+# Physically place the widgets
 
-# Note we are using Grid layout with the first two buttons across the top,
+# Note we are using Grid layout with the first three buttons across the top,
 # then the list frame, which contains the list box and its scrollbar spanning two columns,
-# then the exit button spanning two columns
+# then the exit button in the middle column
 get_card_info_button.grid(row=0, column=0)
 set_repos_button.grid(row=0, column=1)
 copy_files_button.grid(row=0, column=2)
