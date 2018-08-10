@@ -98,6 +98,9 @@ import exifread
 from datetime import datetime, date
 from string import ascii_uppercase
 from tkinter import *
+#from tkinter.ttk import *
+from tkinter import ttk
+from tkinter.scrolledtext import ScrolledText
 from datetime import datetime
 
 #
@@ -648,18 +651,30 @@ def copyfiles_clicked():
 window = Tk()
 window.title('Camera Memory Card Tool')
 window.geometry("800x600")
+#
+# Create a notebook to contain our information pages
+#
+notebook = ttk.Notebook(window)
+page1 = ttk.Frame(notebook)
+page2 = ttk.Frame(notebook)
+text2 = ScrolledText(page2,width=40)
+text2.insert(INSERT,'Page reserved for later')
+notebook.add(page1, text='cards summary')
+notebook.add(page2, text='page two')
 
-# Create a frame for the memory card file list and its scroll bar
-list_frame = Frame(window, relief=SUNKEN, border=2)
 
 # Create the card file list box, its scrollbar, and the button that populates it
-cardfiles_list_box = Listbox(list_frame, height=30, width=50, border=0, selectmode=EXTENDED)
+cardfiles_list_box = Listbox(page1, height=30, width=50, border=0, selectmode=SINGLE)
+list_scrollbar = Scrollbar(page1, orient="vertical")
 get_card_info_button = Button(window, text='Get Cam Cards', command=getcard_clicked)
+
 set_repos_button = Button(window, text='Set Repository', command=setrepos_clicked)
 set_repos_button.config(state=DISABLED)
+
 copy_files_button = Button(window, text='Copy Files', command=copyfiles_clicked)
 copy_files_button.config(state=DISABLED)
-list_scrollbar = Scrollbar(list_frame, orient="vertical", relief=RAISED)
+
+
 
 # Set scrollbar to call the list box yview method. This method scrolls the list to a given position.
 # Set the and set the yscrollcommand function of the list box to be the set command of the scrollbar. This tells
@@ -670,21 +685,21 @@ cardfiles_list_box.config(yscrollcommand=list_scrollbar.set)
 # Create the exit button
 exit_button = Button(window, text='Exit', command=exit_button_clicked)
 
-# Physically place the widgets
+# Place Window widgets using grid layout
 
-# Note we are using Grid layout with the first three buttons across the top,
-# then the list frame, which contains the list box and its scrollbar spanning two columns,
-# then the exit button in the middle column
 get_card_info_button.grid(row=0, column=0)
 set_repos_button.grid(row=0, column=1)
 copy_files_button.grid(row=0, column=2)
-
-# Note the list box and scrollbar are placed into the list frame using pack, then the frame is placed using grid
-cardfiles_list_box.pack(side=LEFT)
-list_scrollbar.pack(side=RIGHT, fill=Y)
-
-list_frame.grid(row=1, column=0, columnspan=3)
-
+notebook.grid(row=1, column=0, columnspan=3)
 exit_button.grid(row=2, column=1)
 
+# Place the card summary list box and its scrollbar using pack layout
+
+#cardfiles_list_box.pack(side=LEFT)
+#list_scrollbar.pack(side=RIGHT, fill=Y)
+cardfiles_list_box.grid(column=0, row=0)
+list_scrollbar.grid(column=1, row=0, sticky=N+S)
+# place the text2 text widget using pack
+#text2.pack(expand=1, fill='both')
+text2.grid(column=0, row=0, sticky=E+W+N+S)  # pack()
 window.mainloop()
