@@ -95,13 +95,15 @@ import pywintypes
 import win32con
 import re
 import exifread
+import subprocess
 from datetime import datetime, date
 from string import ascii_uppercase
 from tkinter import *
-#from tkinter.ttk import *
 from tkinter import ttk
 from tkinter.scrolledtext import ScrolledText
+import tkinter.font
 from datetime import datetime
+
 
 #
 # utility function to reformat the EXIF time format to our file prefix format...
@@ -276,6 +278,7 @@ def get_cam_cards_info():
     # do not care which of these directories it is in, and we will sort the files by time stamp.
     #
 
+
     #
     # Create a list of the media files from the camera cards we found.  These will be in the directory DCIM\subdir,
     # where subdir is assigned by the camera.  We walk the entire card below the DCIM directory.  Note we are assuming
@@ -295,6 +298,10 @@ def get_cam_cards_info():
                     for file in file_list:
                         file_full_path = dir_name+'\\'+file
                         file_extension = os.path.splitext(file)[EXTENSION]
+
+                        # Update status lsbel
+                        status_text.set('Processing '+file_full_path)
+                        status_label.update()
 
                         if file_extension in PICTURE_EXTENSIONS:
                             #
@@ -322,6 +329,10 @@ def get_cam_cards_info():
                             cam['files_with_times'].append(
                                 (file_full_path, datetime.fromtimestamp
                                  (os.path.getctime(file_full_path)).strftime('%Y%m%d-%H%M%S')))
+
+                        status_text.set('Camera Card Files Analyzed')
+                        status_label.update()
+
             #
             # Sort the file list on the timestamp element followed by file name, which are the two fields that will
             # make up the filename as renamed in the repository. We reverse the order because we want to scan in
@@ -337,6 +348,7 @@ def get_cam_cards_info():
             # cam['files_with_times'].sort(reverse=True, key=lambda element: element[TIMESTAMP])
             cam['files_with_times'].sort(reverse=True,
                                          key=lambda element: element[TIMESTAMP]+element[FILENAME].split(sep='\\')[3])
+
     #
     # test prints
     #
@@ -345,7 +357,7 @@ def get_cam_cards_info():
             print(cam['name'], cam['card_pattern'], cam['new_repository_dir'], cam['card_path_list'], sep='\n')
             # for file_and_time in cam['files_with_times']:
             #     print(file_and_time)
-    return
+    return cam_cards_count
 
 
 def make_today_dir():
@@ -463,6 +475,7 @@ def add_camcards_summary():
     # cards removed and added, etc This will not happen
     # very often and if it does, this imparts useful information, so we will let it happen.
     #
+
     for cam in camera_info:
         #
         # Test to see if one or more memory cards for this camera were found.  If so, create the summary
@@ -589,7 +602,7 @@ def exit_button_clicked():
 
 
 def getcard_clicked():
-    get_cam_cards_info()
+    count = get_cam_cards_info()
 
     # disable the button to avoid loading the camera card a second time.
     get_card_info_button.config(state=DISABLED)
@@ -619,18 +632,21 @@ def getcard_clicked():
     # ...
     # Camera name N
     #
-
-    for cam in camera_info:
-        if 'summary_info' in cam:
-            cardfiles_list_box.insert(END, cam['name'])
-            for card_info in cam['summary_info']:
-                cardfiles_list_box.insert(END, '   {}'.format(card_info[CARDINFOPATH]))
-                for dir_info in card_info[CARDINFODIRLIST]:
-                    cardfiles_list_box.insert(END, '      {}'.format(dir_info[DIRINFODIR]))
-                    for date_info in dir_info[DIRINFODATELIST]:
-                        cardfiles_list_box.insert(
-                            END, '         {}: {} - {}'.format(
-                                date_info[DATEINFODATE], date_info[DATEINFOFIRSTFILE], date_info[DATEINFOLASTFILE]))
+    if count == 0:
+        cardfiles_list_box.config(font=('helvetica',20),width=25,height=2,foreground="red")
+        cardfiles_list_box.insert(END, 'No Camera Card Found')
+    else:
+        for cam in camera_info:
+            if 'summary_info' in cam:
+                cardfiles_list_box.insert(END, cam['name'])
+                for card_info in cam['summary_info']:
+                    cardfiles_list_box.insert(END, '   {}'.format(card_info[CARDINFOPATH]))
+                    for dir_info in card_info[CARDINFODIRLIST]:
+                        cardfiles_list_box.insert(END, '      {}'.format(dir_info[DIRINFODIR]))
+                        for date_info in dir_info[DIRINFODATELIST]:
+                            cardfiles_list_box.insert(
+                                END, '         {}: {} - {}'.format(
+                                    date_info[DATEINFODATE], date_info[DATEINFOFIRSTFILE], date_info[DATEINFOLASTFILE]))
     return
 
 
@@ -647,8 +663,18 @@ def copyfiles_clicked():
     return
 
 
+# create a style
+# s = tkinter.ttk.Style()
+# s.configure('TFrame', font=('Helvetica', 20))
+
 # Create the main window
 window = Tk()
+s = ttk.Style()
+s.theme_use('vista')
+s.configure('window.TFrame', font=('Helvetica', 20))
+print(s.theme_names())
+# print(s.element_options('Button.label'))
+
 window.title('Camera Memory Card Tool')
 window.geometry("800x600")
 #
@@ -664,9 +690,11 @@ notebook.add(page2, text='page two')
 
 
 # Create the card file list box, its scrollbar, and the button that populates it
+
 cardfiles_list_box = Listbox(page1, height=30, width=50, border=0, selectmode=SINGLE)
 list_scrollbar = Scrollbar(page1, orient="vertical")
-get_card_info_button = Button(window, text='Get Cam Cards', command=getcard_clicked)
+get_card_info_button = ttk.Button(window, text='Get Cam Cards', command=getcard_clicked)
+
 
 set_repos_button = Button(window, text='Set Repository', command=setrepos_clicked)
 set_repos_button.config(state=DISABLED)
@@ -682,6 +710,12 @@ copy_files_button.config(state=DISABLED)
 list_scrollbar.config(command=cardfiles_list_box.yview)
 cardfiles_list_box.config(yscrollcommand=list_scrollbar.set)
 
+# create a label for reporting status
+
+status_text = StringVar()
+status_label = Label(window, textvariable=status_text, relief=RAISED)
+status_text.set('status text')
+
 # Create the exit button
 exit_button = Button(window, text='Exit', command=exit_button_clicked)
 
@@ -692,14 +726,34 @@ set_repos_button.grid(row=0, column=1)
 copy_files_button.grid(row=0, column=2)
 notebook.grid(row=1, column=0, columnspan=3)
 exit_button.grid(row=2, column=1)
-
+status_label.grid(row=3, column=0, columnspan=3)
 # Place the card summary list box and its scrollbar using pack layout
 
-#cardfiles_list_box.pack(side=LEFT)
-#list_scrollbar.pack(side=RIGHT, fill=Y)
+# cardfiles_list_box.pack(side=LEFT)
+# list_scrollbar.pack(side=RIGHT, fill=Y)
 cardfiles_list_box.grid(column=0, row=0)
 list_scrollbar.grid(column=1, row=0, sticky=N+S)
 # place the text2 text widget using pack
-#text2.pack(expand=1, fill='both')
+# text2.pack(expand=1, fill='both')
 text2.grid(column=0, row=0, sticky=E+W+N+S)  # pack()
+
 window.mainloop()
+
+#
+# code for running exiftool in a subprocess so we can write exif values.  This example uses the exiftool -execute
+# command to pack multiple commands onto one line.
+#
+# subprocess.check_output spawns a subprocess and sends a command line to it, then returns any output from the command
+# line as a byte string.  Note we are not really sending a shell command, but starting a program in the process without
+# running the shell. exiftool is in the path, so it will start and run, then the process shuts down. The try: block is
+# to catch errors.  Need to learn how to catch the actual text of a traceback in the except: block so we can display
+# it in the gui.
+#
+# import subprocess
+# try:
+#     output = subprocess.check_output("exiftool -make -model 20170922-152750_dsc07951.jpg -execute -modifydate 20170922-152716_dsc07951.jpg",stderr=subprocess.STDOUT)
+# except:
+#     print('error')
+# else:
+#     do stuff
+
