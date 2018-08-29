@@ -278,7 +278,6 @@ def get_cam_cards_info():
     # do not care which of these directories it is in, and we will sort the files by time stamp.
     #
 
-
     #
     # Create a list of the media files from the camera cards we found.  These will be in the directory DCIM\subdir,
     # where subdir is assigned by the camera.  We walk the entire card below the DCIM directory.  Note we are assuming
@@ -299,7 +298,7 @@ def get_cam_cards_info():
                         file_full_path = dir_name+'\\'+file
                         file_extension = os.path.splitext(file)[EXTENSION]
 
-                        # Update status lsbel
+                        # Update status label
                         status_text.set('Processing '+file_full_path)
                         status_label.update()
 
@@ -633,7 +632,7 @@ def getcard_clicked():
     # Camera name N
     #
     if count == 0:
-        cardfiles_list_box.config(font=('helvetica',20),width=25,height=2,foreground="red")
+        cardfiles_list_box.config(font=('helvetica', 20), width=25, height=2, foreground="red")
         cardfiles_list_box.insert(END, 'No Camera Card Found')
     else:
         for cam in camera_info:
@@ -683,8 +682,8 @@ window.geometry("800x600")
 notebook = ttk.Notebook(window)
 page1 = ttk.Frame(notebook)
 page2 = ttk.Frame(notebook)
-text2 = ScrolledText(page2,width=40)
-text2.insert(INSERT,'Page reserved for later')
+text2 = ScrolledText(page2, width=40)
+text2.insert(INSERT, 'Page reserved for later')
 notebook.add(page1, text='cards summary')
 notebook.add(page2, text='page two')
 
@@ -693,7 +692,7 @@ notebook.add(page2, text='page two')
 
 cardfiles_list_box = Listbox(page1, height=30, width=50, border=0, selectmode=SINGLE)
 list_scrollbar = Scrollbar(page1, orient="vertical")
-get_card_info_button = ttk.Button(window, text='Get Cam Cards', command=getcard_clicked)
+get_card_info_button = Button(window, text='Get Cam Cards', command=getcard_clicked)
 
 
 set_repos_button = Button(window, text='Set Repository', command=setrepos_clicked)
@@ -702,8 +701,6 @@ set_repos_button.config(state=DISABLED)
 copy_files_button = Button(window, text='Copy Files', command=copyfiles_clicked)
 copy_files_button.config(state=DISABLED)
 
-
-
 # Set scrollbar to call the list box yview method. This method scrolls the list to a given position.
 # Set the and set the yscrollcommand function of the list box to be the set command of the scrollbar. This tells
 # the scrollbar where to put the top and bottom edges of the slider for accurate visual feedback.
@@ -711,10 +708,9 @@ list_scrollbar.config(command=cardfiles_list_box.yview)
 cardfiles_list_box.config(yscrollcommand=list_scrollbar.set)
 
 # create a label for reporting status
-
 status_text = StringVar()
 status_label = Label(window, textvariable=status_text, relief=RAISED)
-status_text.set('status text')
+status_text.set('Status')
 
 # Create the exit button
 exit_button = Button(window, text='Exit', command=exit_button_clicked)
@@ -725,17 +721,18 @@ get_card_info_button.grid(row=0, column=0)
 set_repos_button.grid(row=0, column=1)
 copy_files_button.grid(row=0, column=2)
 notebook.grid(row=1, column=0, columnspan=3)
-exit_button.grid(row=2, column=1)
-status_label.grid(row=3, column=0, columnspan=3)
+exit_button.grid(row=2, column=1, sticky=E+W)
+status_label.grid(row=3, column=0, columnspan=3, sticky=E+W)
 # Place the card summary list box and its scrollbar using pack layout
 
 # cardfiles_list_box.pack(side=LEFT)
 # list_scrollbar.pack(side=RIGHT, fill=Y)
 cardfiles_list_box.grid(column=0, row=0)
 list_scrollbar.grid(column=1, row=0, sticky=N+S)
+
 # place the text2 text widget using pack
 # text2.pack(expand=1, fill='both')
-text2.grid(column=0, row=0, sticky=E+W+N+S)  # pack()
+text2.grid(column=0, row=0, sticky=E+W+N+S)
 
 window.mainloop()
 
@@ -751,9 +748,10 @@ window.mainloop()
 #
 # import subprocess
 # try:
-#     output = subprocess.check_output("exiftool -make -model 20170922-152750_dsc07951.jpg -execute -modifydate 20170922-152716_dsc07951.jpg",stderr=subprocess.STDOUT)
+#     output = subprocess.check_output(
+#              "exiftool -make -model 20170922-152750_dsc07951.jpg -execute -modifydate 20170922-152716_dsc07951.jpg",
+#               stderr=subprocess.STDOUT)
 # except:
 #     print('error')
 # else:
 #     do stuff
-
