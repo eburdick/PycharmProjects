@@ -208,7 +208,9 @@ DATEINFOLASTFILE = 2
 # get today's date.  This will be used to create directories in the repositories for new files on the camera cards
 #
 today = str(date.today())
-
+# today_no_dashes = today[0:4]+today[5:7]+today[8:10]
+today_no_dashes = '20180620'
+print(today, today_no_dashes)
 #
 # Find, and set up data structures for all camera cards plugged into the computer and mounted as drives.
 #
@@ -238,6 +240,8 @@ def get_cam_cards_info():
     # scan all drive labels for matches to our camera cards. Where a match is found:
     #     Increment cam_cards_count
     #     Add the card's path to 'card_path_list' in the camera's camera_info dictionary
+    #     Add a 'new_repository_dir' to each camera data structure that has a corresponging mounted memory card.
+    #         This is the name of the directory that we will create when with copy files from the card(s).
     #
     cam_cards_count = 0
     for drive in mounted_drives:  # iterate over mounted drives
@@ -370,20 +374,25 @@ def make_today_dir():
             else:
                 os.mkdir(cam['new_repository_dir'])
                 print('repository today directory created')
+    return
+
+def find_repository_last_files():
             #
-            # Traverse the repositories backward to find the last files. We will skip the last directory because that
-            # is either empty or may exist because of an earlier run of this code in the same day. We want the last
-            # file before today, because we may have run a different card from the same camera today.
+            # Traverse the repositories backward to find the last files, but if a directory for today has already been
+            # created, we skip it, because it may already have files from a different memory card for the same camera,
+            # and they may be newer than the files we want to copy.
             #
             # technical note: we sort the lists returned by os.listdir() because the order of the list it returns is
             # not in the spec.
             #
+    for cam in camera_info:
+        if 'new_repository_dir' in cam:
             dirlist = list(sorted(os.listdir(cam['repository_base']), reverse=True))
-            skip_dir = True
+            skip_dir = os.path.exists(cam['new_repository_dir'])
             for directory in dirlist:
-                # skip the newest directory
                 if skip_dir:
                     skip_dir = False
+                    print('skipping existing today directory')
                     continue
                 filelist = os.listdir(cam['repository_base']+directory)
                 print(directory)
@@ -601,11 +610,25 @@ def exit_button_clicked():
 
 
 def getcard_clicked():
+    #
+    # Populate the camera data structures with information about the correesponding mounted camera cards, including
+    # directories and files on the cards and timestamps.
+    #
     count = get_cam_cards_info()
+    #
+    # Populate the camera data structures with information about the correponding existing repository directories. A
+    # side effect of this operation is identifying the latest file in each camera repository, and creating a new
+    # subdirectory in the repository for today's new files.
+    #
+    # make_today_dir()
+    find_repository_last_files()
 
     # disable the button to avoid loading the camera card a second time.
     get_card_info_button.config(state=DISABLED)
-    set_repos_button.config(state=NORMAL)
+    # enable the file copy button
+    copy_files_button.config(state=NORMAL)
+    # set_repos_button.config(state=NORMAL)
+
     #
     # create the camera memory card summary
     #
@@ -632,44 +655,81 @@ def getcard_clicked():
     # Camera name N
     #
     if count == 0:
-        cardfiles_list_box.config(font=('helvetica', 20), width=25, height=2, foreground="red")
-        cardfiles_list_box.insert(END, 'No Camera Card Found')
+        status_text.set('No Camera Card Found')
+        status_label.config(fg='Red', font='Helvetica 12 bold')
+        status_label.update()
     else:
         for cam in camera_info:
+            #
+            # Check if the camera has summary info.  If so, then there is a camera card for that camera present and
+            # we proceed to display the information for its card(s). Otherwise, we do nothing
+            #
             if 'summary_info' in cam:
+                #
+                # Display the camera name and grab the date from its last repository file.
+                #
                 cardfiles_list_box.insert(END, cam['name'])
+                cam_last_file_date = cam['repository_last_file'][0:8]
                 for card_info in cam['summary_info']:
+                    #
+                    # There is one or more memory cards for this camera. Iterate through them, starting by listing
+                    # the path of the card in the file system.
+                    #
                     cardfiles_list_box.insert(END, '   {}'.format(card_info[CARDINFOPATH]))
                     for dir_info in card_info[CARDINFODIRLIST]:
+                        #
+                        # Iterate through the directories on the card, starting by listing the name of the directory
+                        #
                         cardfiles_list_box.insert(END, '      {}'.format(dir_info[DIRINFODIR]))
                         for date_info in dir_info[DIRINFODATELIST]:
-                            cardfiles_list_box.insert(
-                                END, '         {}: {} - {}'.format(
-                                    date_info[DATEINFODATE], date_info[DATEINFOFIRSTFILE], date_info[DATEINFOLASTFILE]))
+                            #
+                            # Iterate through the file dates in the directory, displaying the date, and the names
+                            # of the first and last files captured on that date.
+                            #
+                            # Check the options menu to see if the user wants to see a summary for all files on the
+                            # memory cards or just ones that have not been put into the repository yet. If the
+                            # menu does not indicate all files, then skip files that are already in the repository.
+                            #
+                            if date_info[DATEINFODATE] > cam_last_file_date or 'All' in card_info_filter_var.get():
+                                cardfiles_list_box.insert(
+                                    END, '         {}: {} - {}'.format(
+                                        date_info[DATEINFODATE],
+                                        date_info[DATEINFOFIRSTFILE],
+                                        date_info[DATEINFOLASTFILE]))
     return
 
 
-def setrepos_clicked():
-    make_today_dir()
-    set_repos_button.config(state=DISABLED)
-    copy_files_button.config(state=NORMAL)
-    return
+# def setrepos_clicked():
+#    make_today_dir()
+#    set_repos_button.config(state=DISABLED)
+#    copy_files_button.config(state=NORMAL)
+#    return
 
 
 def copyfiles_clicked():
+    make_today_dir()
     copy_and_rename()
     copy_files_button.config(state=DISABLED)
     return
 
 
-# create a style
-# s = tkinter.ttk.Style()
-# s.configure('TFrame', font=('Helvetica', 20))
+def card_info_filter_changed(*args):
+    #
+    # Clear the list box
+    #
+    cardfiles_list_box.delete(0, END)
+    #
+    # run the callback for the getcard button.  That code will check the value of this menu while re-populating the
+    # list box
+    #
+    getcard_clicked()
 
+#
 # Create the main window
+#
 window = Tk()
 s = ttk.Style()
-s.theme_use('vista')
+s.theme_use('xpnative')
 s.configure('window.TFrame', font=('Helvetica', 20))
 print(s.theme_names())
 # print(s.element_options('Button.label'))
@@ -693,13 +753,24 @@ notebook.add(page2, text='page two')
 cardfiles_list_box = Listbox(page1, height=30, width=50, border=0, selectmode=SINGLE)
 list_scrollbar = Scrollbar(page1, orient="vertical")
 get_card_info_button = Button(window, text='Get Cam Cards', command=getcard_clicked)
+card_info_filter_var = StringVar(window)
+card_info_filter_var.set("Memory Card(s): Show All Files")
+# create a label for reporting status
+status_text = StringVar()
+status_label = Label(window, textvariable=status_text, relief=SUNKEN)
+status_text.set('Status')
 
 
-set_repos_button = Button(window, text='Set Repository', command=setrepos_clicked)
-set_repos_button.config(state=DISABLED)
+# set_repos_button = Button(window, text='Set Repository', command=setrepos_clicked)
+# set_repos_button.config(state=DISABLED)
 
 copy_files_button = Button(window, text='Copy Files', command=copyfiles_clicked)
 copy_files_button.config(state=DISABLED)
+card_info_filter_menu = OptionMenu(window,
+                                   card_info_filter_var,
+                                   'Memory Card(s): Show All Files',
+                                   'Memory Card(s): Show New Files')
+card_info_filter_var.trace('w', card_info_filter_changed)
 
 # Set scrollbar to call the list box yview method. This method scrolls the list to a given position.
 # Set the and set the yscrollcommand function of the list box to be the set command of the scrollbar. This tells
@@ -707,22 +778,18 @@ copy_files_button.config(state=DISABLED)
 list_scrollbar.config(command=cardfiles_list_box.yview)
 cardfiles_list_box.config(yscrollcommand=list_scrollbar.set)
 
-# create a label for reporting status
-status_text = StringVar()
-status_label = Label(window, textvariable=status_text, relief=RAISED)
-status_text.set('Status')
-
 # Create the exit button
 exit_button = Button(window, text='Exit', command=exit_button_clicked)
 
 # Place Window widgets using grid layout
 
 get_card_info_button.grid(row=0, column=0)
-set_repos_button.grid(row=0, column=1)
+# set_repos_button.grid(row=0, column=1)
 copy_files_button.grid(row=0, column=2)
 notebook.grid(row=1, column=0, columnspan=3)
-exit_button.grid(row=2, column=1, sticky=E+W)
-status_label.grid(row=3, column=0, columnspan=3, sticky=E+W)
+card_info_filter_menu.grid(row=3, column=0, columnspan=2, sticky=W)
+exit_button.grid(row=3, column=2, sticky=E)
+status_label.grid(row=2, column=0, columnspan=3, sticky=E+W)
 # Place the card summary list box and its scrollbar using pack layout
 
 # cardfiles_list_box.pack(side=LEFT)
