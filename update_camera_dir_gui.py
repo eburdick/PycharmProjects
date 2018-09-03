@@ -2,10 +2,10 @@
 
 #
 # 
-# The overall goal is to copy files from a camera memory card to the file respository on the computer that corresponds
-# to the camera the memory card came from. File names in the repository are of the form of a time code: YYYYMMDD-HHMMSS_
+# The overall goal is to copy files from camera memory cards to the file respository on the computer that corresponds
+# to the camera each memory card came from. File names in the repository are formated as a time code: YYYYMMDD-HHMMSS_
 # followed by the original file name, for example "20170417-130751_dsc_2930.nef" This started out as a camera file
-# without the time code: "dsc_2930.nef". The time code is appended by a script that copies the "time digitized" metadata
+# without the time code: "DSC_2930.NEF". The time code is appended by a script that copies the "time digitized" metadata
 # from the file and formats it into the chosen format. This pretty much guarantees that every file will have a unique
 # name over a very long time.
 #
@@ -19,9 +19,8 @@
 #             More subdirectories in the format YYYY-MM-DD
 #     
 # File renaming:
-#     Before copying the files to the repository directory, we copy them to a temporary directory and rename them, 
-#     appending the time code as described above from the datetimeoriginal EXIF metadata. At that time, we may apply
-#     a correction if the camera clock was set wrong.
+#     After copying the files to the repository directory, we rename them,
+#     appending the time code as described above from the datetimeoriginal EXIF metadata.
 # 
 # Program flow:
 #     - Scan storage devices plugged into the computer for known camera cards from our cameras. This assumes we know
@@ -31,31 +30,24 @@
 #
 #     - For each camera card detected, add its path to the corresponding camera_info dictionary by added it to
 #       the list at key card_path_list. Then add an empty list for paths to the files on the card and a path to the
-#       a new repository directory for new files on these cards.
-#
-#
-#     that corresponds to today.  If there is none, then create one.
+#       a new repository directory for new files on these cards that corresponds to today.  If there is none, then
+#       create one.
 #
 #     - Scan and sort the entire camera repository and identify the newest file(s). There may be two with the same
-#     time stamp, one jpg and one raw. We will assume there are only two at most. (issue: we will need an algorithm
-#     to resolve that fact that the timestamps have only a one second resolution, and burst shots will create several
-#     files within a second. This can probably be resolved by looking at the camera assigned sequence number, but 
-#     there are special cases that can mess this up.)
+#     time stamp, one jpg and one raw. We will assume there are only two at most.
 #
 #     - Scan and sort the entire memory card to find the first file(s) newer than the newest file(s) found in the
 #     repository.
 #
-#     - Copy the first newer file(s) and all later ones to the temporary rename directory.
+#     - Copy the files to the new repository sub directory, renaming on the fly. Clock corrections can  be done
+#     after doing this copy/rename.
 #
-#     - Scan the camera card and the repository to find any stragglers -- older files that did not get copied
-#     in the past. Put these where they belong in the repository and report to the user. This step could be done
-#     later if it makes sense...
+# Things we are not handling:
 #
-#     - Run the rename and copy the renamed files to the new repository sub directory. Clock corrections should be
-#     done here, probably via a GUI designed for this purpose. Alternatively, this could be done later. There could
-#     be code added here to detect timestamps that do not make sense, like pictures taken in the middle of the night,
-#     and alert the user.
+#     - Major clock corrections of more than a few hours, and specifically clock corrections that make files in
+#     the repository newer than the files on a memory card.
 #
+#     - Gaps in the repository due to previous manual copies with mistakes or deletions.
 
 
 # Notes:
@@ -86,23 +78,25 @@
 # files. Maybe in this case, we do a special test to avoid this. Note this could also be an issue with in-camera
 # edited files as described above.
 
-
+#
+# Import library modules
+#
 import os
-import shutil
-import win32api
-import win32file
-import pywintypes
-import win32con
-import re
-import exifread
-import subprocess
-from datetime import datetime, date
-from string import ascii_uppercase
-from tkinter import *
-from tkinter import ttk
-from tkinter.scrolledtext import ScrolledText
-import tkinter.font
-from datetime import datetime
+import shutil          # high level file operations like copy, rename, etc
+import win32api        # windows specific operations
+import win32file       # windows specific file stuff
+import pywintypes      # supports common windows types like times
+import win32con        # windows constants
+import re              # the regular expression module
+import exifread        # media file metadata stuff we use it for getting timestamps
+import subprocess      # subprocess utilities for spawning applications like exiftool
+from datetime import datetime, date  # date and time related utilities
+from string import ascii_uppercase   # pretty self explanitory
+from tkinter import *                # GUI stuff
+from tkinter import ttk              # more widgets
+from tkinter.scrolledtext import ScrolledText  # not sure why we need to import a module for scrolled text
+import tkinter.font                  # GUI font stuff
+# from datetime import datetime        # redundant?
 
 
 #
@@ -139,7 +133,7 @@ def change_file_times(fname, timestamp):
     #
     win32file.SetFileTime(winfile, wintime, wintime, wintime)
     #
-    # We must close the file because it was opened by the OS
+    # We must close the file because it is a platform specific object created by the OS
     #
     winfile.close()
     return
@@ -169,13 +163,18 @@ camera_info = [
     {'name': 'Nikon D500',
      'card_pattern': re.compile('.*d500', re.IGNORECASE),  # pattern: any characters followed by "d500"
      'repository_base': 'V:\\Camera-buf\\nikon-d500\\renamed copies of flash memory\\',
-     'files_with_times': []},
+     'digital_camera_image_path': 'DCIM\\',  # camera card directory containing media files
+     'files_with_times': [],
+     'processed': False},
     {'name': 'Nikon Coolpix B700',
      'card_pattern': re.compile('.*b700', re.IGNORECASE),  # pattern: any characters followed by "b700"
      'repository_base': 'V:\\Camera-buf\\nikon-coolpix-b700\\renamed copies of flash memory\\',
-     'files_with_times': []}]
+     'digital_camera_image_path': 'DCIM\\',
+     'files_with_times': [],
+     'processed': False}]
 
-
+def get_camera_info():
+    return camera_info;
 #
 # list of file extensions for picture files. We use this to distinguish these from video files when we get
 # exif information.
@@ -207,10 +206,8 @@ DATEINFOLASTFILE = 2
 #
 # get today's date.  This will be used to create directories in the repositories for new files on the camera cards
 #
-today = str(date.today())
-# today_no_dashes = today[0:4]+today[5:7]+today[8:10]
-today_no_dashes = '20180620'
-print(today, today_no_dashes)
+# today = str(date.today())
+
 #
 # Find, and set up data structures for all camera cards plugged into the computer and mounted as drives.
 #
@@ -243,9 +240,14 @@ def get_cam_cards_info():
     #     Add a 'new_repository_dir' to each camera data structure that has a corresponging mounted memory card.
     #         This is the name of the directory that we will create when with copy files from the card(s).
     #
+    for cam in get_camera_info():   # delete any card_path_list in each camera_info
+        if 'card_path_list' in cam:
+            del cam['card_path_list']
+
     cam_cards_count = 0
     for drive in mounted_drives:  # iterate over mounted drives
-        for cam in camera_info:   # for each mounted drive, iterate over our camera definition
+        for cam in get_camera_info():   # for each mounted drive, iterate over our camera definition
+            cam['processed'] = True
             if cam['card_pattern'].match(drive['label']):  # if the current drive label matches the known camera label
                 cam_cards_count += 1
                 if 'card_path_list' not in cam:
@@ -256,7 +258,8 @@ def get_cam_cards_info():
                     # - path to a new directory where we will copy the new files.
                     #
                     cam['card_path_list'] = [drive['path']]
-                    cam['new_repository_dir'] = cam['repository_base']+today
+                    cam['today_dir'] = str(date.today())
+                    cam['new_repository_dir'] = cam['repository_base']+cam['today_dir']
                 else:
                     #
                     # The dictionary for this camera already have entries for a memory card, which means we have
@@ -286,12 +289,16 @@ def get_cam_cards_info():
     # Create a list of the media files from the camera cards we found.  These will be in the directory DCIM\subdir,
     # where subdir is assigned by the camera.  We walk the entire card below the DCIM directory.  Note we are assuming
     # all of our camera cards are organized with a DCIM top level directory with one layer of sub directories
-    # containing only media files below that.
+    # containing only media files below that. We get the DCIM path from the camera profile
+    # (cam['digital_camera_image_path']) just in case we end up with a camera that does things differently.
     #
-    for cam in camera_info:
+    # notebook.select(log_page)       # open the notebook to the log page
+    # notebook.update()
+    for cam in get_camera_info():
+        cam['files_with_times'] = []
         if 'card_path_list' in cam:
             for path in cam['card_path_list']:
-                for dir_name, subdir_list, file_list in os.walk(path+'DCIM\\'):
+                for dir_name, subdir_list, file_list in os.walk(path+cam['digital_camera_image_path']):
                     #
                     # for each file in file_list, combine it with dir_name\ to form the full file path, then get its
                     # time stamp, either by getting the DateTimeOriginal EXIF value (picture files) or the file
@@ -303,8 +310,9 @@ def get_cam_cards_info():
                         file_extension = os.path.splitext(file)[EXTENSION]
 
                         # Update status label
-                        status_text.set('Processing '+file_full_path)
+                        status_text.set('Found {}'.format(file_full_path))
                         status_label.update()
+                        log_text.insert(END,'Found {}\n'.format(file_full_path))
 
                         if file_extension in PICTURE_EXTENSIONS:
                             #
@@ -333,8 +341,6 @@ def get_cam_cards_info():
                                 (file_full_path, datetime.fromtimestamp
                                  (os.path.getctime(file_full_path)).strftime('%Y%m%d-%H%M%S')))
 
-                        status_text.set('Camera Card Files Analyzed')
-                        status_label.update()
 
             #
             # Sort the file list on the timestamp element followed by file name, which are the two fields that will
@@ -351,11 +357,13 @@ def get_cam_cards_info():
             # cam['files_with_times'].sort(reverse=True, key=lambda element: element[TIMESTAMP])
             cam['files_with_times'].sort(reverse=True,
                                          key=lambda element: element[TIMESTAMP]+element[FILENAME].split(sep='\\')[3])
+            status_text.set('{}Camera Card Files Found. See Log tab for list'.format(len(cam['files_with_times'])))
+            status_label.update()
 
     #
     # test prints
     #
-    for cam in camera_info:
+    for cam in get_camera_info():
         if 'card_path_list' in cam:
             print(cam['name'], cam['card_pattern'], cam['new_repository_dir'], cam['card_path_list'], sep='\n')
             # for file_and_time in cam['files_with_times']:
@@ -367,7 +375,7 @@ def make_today_dir():
     #
     # use new_repository_dir from each camera card dictionary to create a directory
     #
-    for cam in camera_info:
+    for cam in get_camera_info():
         if 'new_repository_dir' in cam:
             if os.path.exists(cam['new_repository_dir']):
                 print('repository today directory exists')
@@ -385,7 +393,7 @@ def find_repository_last_files():
             # technical note: we sort the lists returned by os.listdir() because the order of the list it returns is
             # not in the spec.
             #
-    for cam in camera_info:
+    for cam in get_camera_info():
         if 'new_repository_dir' in cam:
             dirlist = list(sorted(os.listdir(cam['repository_base']), reverse=True))
             skip_dir = os.path.exists(cam['new_repository_dir'])
@@ -425,26 +433,56 @@ def find_repository_last_files():
 
 
 def copy_and_rename():
-    for cam in camera_info:
+    notebook.select(log_page)       # open the notebook to the log page
+    notebook.update()
+    for cam in get_camera_info():
+        #
+        # If this camera is contributing files, post its name, repository base, and target directory to the log
+        #
+        if len(cam['files_with_times']):
+            log_text.insert(END, 'Camera: {}\nRepository Base:\n   {}\nNew Repository Directory: {}\n\n'.format(
+                                 cam['name'], cam['repository_base'], cam['today_dir']))
+        #
+        # Iterate over all of the files and copy the new ones to the repository, renaming along the way by
+        # prepending the timestamp. Also, change the filesystem timestamps for the file to match its EXIF
+        # timestamp.
+        #
+        copied_count = 0                                                 # initialize counter for the log
         for file_and_time in cam['files_with_times']:
             last_file_timestamp = cam['repository_last_file'][0:15]
+            #
             # check if the file is newer than the last file in the existing repository. If not, we are done.
+            #
             if file_and_time[TIMESTAMP] > last_file_timestamp:
                 sourcepath, base_filename = os.path.split(file_and_time[FILENAME])  # get base filename
+                #
                 # create new target name with timestamp_
+                #
                 new_filename = (file_and_time[TIMESTAMP] + '_' + base_filename).lower()
                 dest_path = os.path.join(cam['new_repository_dir'], new_filename)
+                #
                 # check if the target file in the repository already exists.  If so, skip the copy.
+                #
                 if os.path.exists(dest_path):
-                    print('Skipping copy to {}. File already exists.'.format(dest_path))
+                    #
+                    # Destination file already exists. Just post to the log that we are skipping the copy
+                    #
+                    log_text.insert(END, '{} exists - skipping\n'.format(new_filename))
                     continue
                 else:
-                    shutil.copy2(file_and_time[FILENAME], dest_path)  # copy to repository
-                    change_file_times(dest_path, file_and_time[TIMESTAMP])
-                    print('copied {} to {}'.format(file_and_time[FILENAME], dest_path))
-            else:
-                # we have already copied the files newer than the newest repository entry
-                break
+                    #
+                    # Destination file does not exist. Copy the file with the new name created above
+                    #
+                    shutil.copy2(file_and_time[FILENAME], dest_path)        # copy to repository with name update
+                    change_file_times(dest_path, file_and_time[TIMESTAMP])  # update file timestamps
+                    #
+                    # post a line to the log. Note \u279C is the "heavy round-tipped rightwards arrow"
+                    # unicode character (➜)
+                    #
+                    log_text.insert(END,'{} \u279C {}\n'.format(file_and_time[FILENAME], new_filename))
+                    copied_count += 1
+                log_text.yview_pickplace('end') # Scroll log text to the bottom
+        log_text.insert(END, '{} files copied for {}\n'.format(str(copied_count), cam['name']))
     return
 
 
@@ -484,7 +522,7 @@ def add_camcards_summary():
     # very often and if it does, this imparts useful information, so we will let it happen.
     #
 
-    for cam in camera_info:
+    for cam in get_camera_info():
         #
         # Test to see if one or more memory cards for this camera were found.  If so, create the summary
         # information for the cards
@@ -527,8 +565,8 @@ def add_camcards_summary():
                 last_file = new_file        # save old file value for use as last_file.
                 new_file = path_tokens[3]
                 #
-                # If the path, the directory and the date are the same as the previous iteration, we create
-                # no new summary information
+                # If the path, the directory and the date are the same as the previous iteration, we skip to the
+                # end of the loop, creating no new summary information
                 #
                 if new_path == old_path and new_dir == old_dir and new_date == old_date:
                     continue
@@ -557,7 +595,7 @@ def add_camcards_summary():
                 # if the directory has changed but the path is the same, then we need to add a directory entry
                 # to the current dir_list, but first, we create a new date_file_list with the date_file_entry
                 # we just created and use it to create the dir_entry. We also copy the new dir to old_dir for
-                # the next time this test is made
+                # the next time this test is made, then skip to the end of the loop.
                 #
                 if new_path == old_path and new_dir != old_dir:
                     date_file_list = [date_file_entry]
@@ -593,7 +631,7 @@ def add_camcards_summary():
                     date_file_entry.append(new_file)
 
             #
-            # copy the reference to the path list into the camera's summary_info slot.
+            # finally, copy the reference to the path list into the camera's summary_info slot.
             #
             cam['summary_info'] = path_list
 
@@ -614,7 +652,21 @@ def getcard_clicked():
     # Populate the camera data structures with information about the correesponding mounted camera cards, including
     # directories and files on the cards and timestamps.
     #
-    count = get_cam_cards_info()
+    cam = get_camera_info()
+    #
+    # If we have not touched the camera dictionaries yet, we need to get the information from the camera memory
+    # cards and populate the camera dictionaries.  Otherwise, we have already done it.  Count is the number of
+    # camera cards found.  If we don't call get_cam_cards_info(), then we get the count by looking at the
+    # camera dictionaries.
+    #
+    if not cam[0]['processed']:
+        count = get_cam_cards_info()
+    else:
+        count = 0
+        for cam in get_camera_info():
+            if 'card_path_list' in cam:
+                count += len(cam['card_path_list'])
+
     #
     # Populate the camera data structures with information about the correponding existing repository directories. A
     # side effect of this operation is identifying the latest file in each camera repository, and creating a new
@@ -625,8 +677,10 @@ def getcard_clicked():
 
     # disable the button to avoid loading the camera card a second time.
     get_card_info_button.config(state=DISABLED)
+
     # enable the file copy button
     copy_files_button.config(state=NORMAL)
+
     # set_repos_button.config(state=NORMAL)
 
     #
@@ -659,7 +713,7 @@ def getcard_clicked():
         status_label.config(fg='Red', font='Helvetica 12 bold')
         status_label.update()
     else:
-        for cam in camera_info:
+        for cam in get_camera_info():
             #
             # Check if the camera has summary info.  If so, then there is a camera card for that camera present and
             # we proceed to display the information for its card(s). Otherwise, we do nothing
@@ -713,6 +767,11 @@ def copyfiles_clicked():
     return
 
 
+#
+# Callback for option menu change. The main reason we have this is to provide a callback with the right
+# arguments, even though we don't actually use the arguments.  Otherwise, we could just call the getcard button
+# callback.
+#
 def card_info_filter_changed(*args):
     #
     # Clear the list box
@@ -731,7 +790,7 @@ window = Tk()
 s = ttk.Style()
 s.theme_use('xpnative')
 s.configure('window.TFrame', font=('Helvetica', 20))
-print(s.theme_names())
+# print(s.theme_names())
 # print(s.element_options('Button.label'))
 
 window.title('Camera Memory Card Tool')
@@ -740,18 +799,18 @@ window.geometry("800x600")
 # Create a notebook to contain our information pages
 #
 notebook = ttk.Notebook(window)
-page1 = ttk.Frame(notebook)
-page2 = ttk.Frame(notebook)
-text2 = ScrolledText(page2, width=40)
-text2.insert(INSERT, 'Page reserved for later')
-notebook.add(page1, text='cards summary')
-notebook.add(page2, text='page two')
+summary_page = ttk.Frame(notebook)
+log_page = ttk.Frame(notebook)
+log_text = ScrolledText(log_page, width=60, font='Helvetica 8')
+# log_text.insert(INSERT, 'Page reserved for later')
+notebook.add(summary_page, text='Cards Summary')
+notebook.add(log_page, text='Log')
 
 
 # Create the card file list box, its scrollbar, and the button that populates it
 
-cardfiles_list_box = Listbox(page1, height=30, width=50, border=0, selectmode=SINGLE)
-list_scrollbar = Scrollbar(page1, orient="vertical")
+cardfiles_list_box = Listbox(summary_page, height=30, width=60, border=0, selectmode=SINGLE)
+list_scrollbar = Scrollbar(summary_page, orient="vertical")
 get_card_info_button = Button(window, text='Get Cam Cards', command=getcard_clicked)
 card_info_filter_var = StringVar(window)
 card_info_filter_var.set("Memory Card(s): Show All Files")
@@ -797,9 +856,9 @@ status_label.grid(row=2, column=0, columnspan=3, sticky=E+W)
 cardfiles_list_box.grid(column=0, row=0)
 list_scrollbar.grid(column=1, row=0, sticky=N+S)
 
-# place the text2 text widget using pack
-# text2.pack(expand=1, fill='both')
-text2.grid(column=0, row=0, sticky=E+W+N+S)
+# place the log_text text widget using pack
+# log_text.pack(expand=1, fill='both')
+log_text.grid(column=0, row=0, sticky=E+W+N+S)
 
 window.mainloop()
 
