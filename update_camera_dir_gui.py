@@ -90,12 +90,21 @@ import win32con        # windows constants
 import re              # the regular expression module
 import exifread        # media file metadata stuff we use it for getting timestamps
 import subprocess      # subprocess utilities for spawning applications like exiftool
+from subprocess import Popen
 from datetime import datetime, date  # date and time related utilities
 from string import ascii_uppercase   # pretty self explanitory
 from tkinter import *                # GUI stuff
 from tkinter import ttk              # more widgets
 from tkinter.scrolledtext import ScrolledText  # not sure why we need to import a module for scrolled text
 import tkinter.font                  # GUI font stuff
+from PIL import Image, ImageTk
+from resizeimage import resizeimage
+import numpy as np
+import cv2
+# import webbrowser
+#from tkinter.filedialog import askopenfilename
+#import vlc
+
 # from datetime import datetime        # redundant?
 
 
@@ -107,6 +116,11 @@ import tkinter.font                  # GUI font stuff
 
 def exiftime_to_file_prefix(exif_time):
     return exif_time[0:4]+exif_time[5:7]+exif_time[8:10]+'-'+exif_time[11:13]+exif_time[14:16]+exif_time[17:19]
+
+
+
+
+
 
 #
 # Function to change all three timestamps of a file...creation time, modify time and access time. We will use
@@ -192,6 +206,7 @@ def get_camera_info():
 # exif information.
 #
 PICTURE_EXTENSIONS = ['.jpg', '.JPG', '.nef', '.NEF', '.nrw', '.NRW']
+VIDEO_EXTENSIONS = ['.MP4', '.mp4', '.MOV', '.mov']
 #
 # index constants for files_with_times tuple
 #
@@ -216,6 +231,21 @@ DATEINFODATE = 0
 DATEINFOFIRSTFILE = 1
 DATEINFOLASTFILE = 2
 
+
+def is_picture_file(file_name):
+    file_extension = os.path.splitext(file_name)[EXTENSION]
+    if file_extension in PICTURE_EXTENSIONS:
+        return True
+    else:
+        return False
+
+
+def is_video_file(file_name):
+    file_extension = os.path.splitext(file_name)[EXTENSION]
+    if file_extension in VIDEO_EXTENSIONS:
+        return True
+    else:
+        return False
 
 def get_cam_cards_info():
     #
@@ -275,14 +305,7 @@ def get_cam_cards_info():
                     # the card path list for the camera
                     #
                     cam['card_path_list'].append(drive['path'])
-    #
-    # !!! test prints
-    #
-    if cam_cards_count == 0:
-        print('no camera card found')
-    else:
-        for cam in camera_info:
-            print(cam)
+
     #
     # At this point, we have path data for all memory cards present. For each memory card, we want to catalog
     # each of its files with the following information:
@@ -318,6 +341,7 @@ def get_cam_cards_info():
                         status_text.set('Found {}'.format(file_full_path))
                         status_label.update()
                         log_text.insert(END, 'Found {}\n'.format(file_full_path))
+                        file_extension = os.path.splitext(file)[EXTENSION]
 
                         if file_extension in PICTURE_EXTENSIONS:
                             #
@@ -420,13 +444,6 @@ def find_repository_last_files():
                     #
                     cam['repository_last_file'] = sorted(filelist)[-1]
                     break
-    #
-    # !!! test prints
-    #
-    # for cam in camera_info:
-    #    if 'repository_last_dir' in cam:
-    #        print(cam['name'], 'last file = ',
-    #              "{0}{1}{2}".format(cam['repository_base'], cam['repository_last_dir'], cam['repository_last_file']))
     return
 
 
@@ -660,7 +677,7 @@ def add_camcards_summary():
 
 
 def exit_button_clicked():
-    exit()
+    sys.exit(1)
     return
 
 
@@ -793,6 +810,114 @@ def card_info_filter_changed(*args):
     getcard_clicked()
 
 
+def make_pic_for_canvas(filename, height, width):
+    #
+    # This function takes a file name and a canvas height and width and creates and image
+    # properly scaled and rotated to fit on a Tk canvas of those dimentions. The assumption
+    # is that this file come from a camera containing the EXIF flag Image Orientation tag, but
+    # if this tag is absent, the orientation part is skipped. It is assumed that this function
+    # will only be passed Tk recognized image files.
+    #
+    pic = Image.open(filename)
+    pic = resizeimage.resize_contain(pic, [height, width])
+    f = open(filename, 'rb')
+    tags = exifread.process_file(f, details=False, stop_tag='Image Orientation')
+    if 'Image Orientation' in tags:
+        if 'Rotated 90 CW' in str(tags['Image Orientation']):
+            pic = pic.rotate(-90)
+        elif 'Rotated 180 CW' in str(tags['Image Orientation']):
+            pic = pic.rotate(180)
+        elif 'Rotated 270 CW' in str(tags['Image Orientation']):
+            pic = pic.rotate(-270)
+
+    return ImageTk.PhotoImage(pic)
+
+
+def get_first_frame(vidfile, height, width):
+    vidcap = cv2.VideoCapture(vidfile)
+    #
+    # Read a frame from the video capture object
+    #
+    ret, frame = vidcap.read()
+    #
+    # convert frame color space from the BGR coding used by OpenCV to RGB used by Tk. If we don't
+    # do this, the red and blue channels will be reversed in the image
+    #
+    cv2image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGBA)
+    #
+    # OpenCV stores the image in an array managed by python's array support module, numpy. Here we convert that array
+    # to a PIL (python imaging library) image, then we resize the image to fit the canvas, then convert it to a Tk
+    # image and put it on the canvas
+    #
+    pic = Image.fromarray(cv2image)
+    pic = resizeimage.resize_contain(pic, [height, width])
+    return ImageTk.PhotoImage(image=pic)
+
+
+def on_summary_select(evt):
+    #
+    # This is the callback function for a selection change in the memory card summary list. If the user clicks
+    # on a line with file names (first and last for a given date) then this code will display a preview of each
+    # file. This code parses out the file names and their extensions, searches the camera file lists for matching
+    # names with full paths, then calls the appropriate function to make a still image (make_pic_for_canvas()) or
+    # capture a video frame (get_first_frame()), and finally puts the results on the canvases.
+    #
+    # Get the widget that called this function and then get the index and value of the selection
+    #
+    w = evt.widget
+    index = int(w.curselection()[0])
+    value = w.get(index)
+    #
+    # If the selected line is one with file names, parse out the file names.  We determine such lines based on
+    # the format chosen (date=string: first_file - last_file), which are the only lines containing both : and -
+    # Changing this format will break this code.
+    #
+    if ':' in value and '-' in value:
+        filenames = value.split(sep=':')[1]
+        first_file = filenames.split(sep='-')[0].strip()
+        last_file = filenames.split(sep='-')[1].strip()
+    else:
+        return
+
+    print('selection index = {}, value = {}, first file = {}, second file = {}'.format(index, value, first_file, last_file))
+
+    for cam in get_camera_info():
+        if cam['files_with_times']:
+            for file, time in cam['files_with_times']:
+                if last_file in file:
+                    last_file_path = file
+                if first_file in file:
+                    first_file_path = file
+                    break
+
+    if is_picture_file(first_file_path):
+        #
+        # Create photo image and assign to function attribute. These are attached to the function definition, so
+        # the values are not garbage collected after the function returns. There is a spectrum of opinion on
+        # whether this approach is "pypthonic" or an abuse of this mechanism, but it is a simple way of keeping
+        # this data in memory, which is what TK needs to happen.
+        #
+        on_summary_select.photo1 = make_pic_for_canvas(first_file_path, canvas_height, canvas_width)
+    elif is_video_file(first_file_path):
+        on_summary_select.photo1 = get_first_frame(first_file_path, canvas_height, canvas_width )
+
+    if on_summary_select.photo1:
+        image_canvas1.delete('all')
+        image_canvas1.create_image(canvas_width//2, canvas_height//2, image=on_summary_select.photo1, anchor=CENTER)
+
+    if is_picture_file(last_file_path):
+        on_summary_select.photo2 = make_pic_for_canvas(last_file_path, canvas_height, canvas_width)
+    elif is_video_file(last_file_path):
+        on_summary_select.photo2 = get_first_frame(last_file_path, canvas_height, canvas_width)
+
+    if on_summary_select.photo2:
+        image_canvas2.delete('all')
+        image_canvas2.create_image(canvas_width//2, canvas_height//2, image=on_summary_select.photo2, anchor=CENTER)
+
+    print(on_summary_select.photo1, on_summary_select.photo2)
+    return
+
+
 #
 # Create the main window
 #
@@ -800,11 +925,9 @@ window = Tk()
 s = ttk.Style()
 s.theme_use('xpnative')
 s.configure('window.TFrame', font=('Helvetica', 20))
-# print(s.theme_names())
-# print(s.element_options('Button.label'))
 
 window.title('Camera Memory Card Tool')
-window.geometry("800x600")
+window.geometry("1400x600")
 #
 # Create a notebook to contain our information pages
 #
@@ -820,6 +943,7 @@ notebook.add(log_page, text='Log')
 # Create the card file list box, its scrollbar, and the button that populates it
 
 cardfiles_list_box = Listbox(summary_page, height=30, width=60, border=0, selectmode=SINGLE)
+cardfiles_list_box.bind('<<ListboxSelect>>', on_summary_select)
 list_scrollbar = Scrollbar(summary_page, orient="vertical")
 get_card_info_button = Button(window, text='Get Cam Cards', command=getcard_clicked)
 card_info_filter_var = StringVar(window)
@@ -847,6 +971,13 @@ card_info_filter_var.trace('w', card_info_filter_changed)
 list_scrollbar.config(command=cardfiles_list_box.yview)
 cardfiles_list_box.config(yscrollcommand=list_scrollbar.set)
 
+#
+# create a canvas for displaying images
+#
+canvas_height = 500
+canvas_width = 500
+image_canvas1 = Canvas(window, width=canvas_width, height=canvas_height, bg="gray")
+image_canvas2 = Canvas(window, width=canvas_width, height=canvas_height, bg="gray")
 # Create the exit button
 exit_button = Button(window, text='Exit', command=exit_button_clicked)
 
@@ -870,6 +1001,33 @@ list_scrollbar.grid(column=1, row=0, sticky=N+S)
 # log_text.pack(expand=1, fill='both')
 log_text.grid(column=0, row=0, sticky=E+W+N+S)
 
+#
+# place canvas
+#
+
+#
+# function to get open and image file, resize it to fit a specific canvas size, rotate it based on the image
+# orientation in the file's EXIF data, and create a PhotoImage for display on a tkint canvas.
+#
+#photo1 = 0
+#photo2 = 0
+
+image_canvas1.grid(column=3, row=1)
+image_canvas2.grid(column=4, row=1)
+
+#
+# Try out video stuff
+#
+# vidfile = 'L:\\DCIM\\103ND500\\DSC_1546.MOV'
+#
+# Create a video capture object from the file
+#
+
+
+#image_canvas2.create_image(canvas_width//2, canvas_height//2, image=photo1, anchor=CENTER)
+#
+# start gui main loop
+#
 window.mainloop()
 
 #
