@@ -101,6 +101,7 @@ from PIL import Image, ImageTk
 from resizeimage import resizeimage
 import numpy as np
 import cv2
+
 # import webbrowser
 #from tkinter.filedialog import askopenfilename
 #import vlc
@@ -854,19 +855,20 @@ def get_first_frame(vidfile, height, width):
     return ImageTk.PhotoImage(image=pic)
 
 
-def on_summary_select(evt):
+def on_summary_select(evt, canvas_list):
     #
     # This is the callback function for a selection change in the memory card summary list. If the user clicks
     # on a line with file names (first and last for a given date) then this code will display a preview of each
     # file. This code parses out the file names and their extensions, searches the camera file lists for matching
     # names with full paths, then calls the appropriate function to make a still image (make_pic_for_canvas()) or
-    # capture a video frame (get_first_frame()), and finally puts the results on the canvases.
+    # capture a video frame (get_first_frame()), and finally puts the results on the canvases (canvas_list[0] and [1])
     #
-    # Get the widget that called this function and then get the index and value of the selection
+    # Get the widget that called this function and then get the index and value string of the selection
     #
     w = evt.widget
     index = int(w.curselection()[0])
     value = w.get(index)
+
     #
     # If the selected line is one with file names, parse out the file names.  We determine such lines based on
     # the format chosen (date=string: first_file - last_file), which are the only lines containing both : and -
@@ -877,49 +879,76 @@ def on_summary_select(evt):
         first_file = filenames.split(sep='-')[0].strip()
         last_file = filenames.split(sep='-')[1].strip()
     else:
+        #
+        # selected line does not have file information
+        #
         return
-
-    print('selection index = {}, value = {}, first file = {}, second file = {}'.format(index, value, first_file, last_file))
-
+    #
+    # create working lists for static photo storage and file path
+    #
+    on_summary_select.photo = [None, None]
+    file_path = [None, None]
+    #
+    # Find the file names in the camera file lists.  We search all cameras here because the likelihood of
+    # finding the file in the wrong camera is very slight.  Probably should change the code to get the correct
+    # camera name, but this should rarely be a bug.
+    #
+    found_paths = False
     for cam in get_camera_info():
         if cam['files_with_times']:
             for file, time in cam['files_with_times']:
                 if last_file in file:
-                    last_file_path = file
+                    # set path to last file
+                    file_path[0] = file
                 if first_file in file:
-                    first_file_path = file
+                    # set path to first file
+                    file_path[1] = file
+                    #
+                    # because the file list we are searching is in reverse order, we know we have already
+                    # found the last file and the first file when we get here, so we can break out of the
+                    # both the inner and outer loops
+                    #
+                    found_paths = True
                     break
+        if found_paths:
+            break
 
-    if is_picture_file(first_file_path):
+    #
+    # We have two file paths and two canvases arranged in lists. Display first path file on first canvas and
+    # second path file on second canvas
+    #
+    for i in range(0,2):
         #
-        # Create photo image and assign to function attribute. These are attached to the function definition, so
-        # the values are not garbage collected after the function returns. There is a spectrum of opinion on
-        # whether this approach is "pypthonic" or an abuse of this mechanism, but it is a simple way of keeping
-        # this data in memory, which is what TK needs to happen.
+        # Get canvas width and height
         #
-        on_summary_select.photo1 = make_pic_for_canvas(first_file_path, canvas_height, canvas_width)
-    elif is_video_file(first_file_path):
-        on_summary_select.photo1 = get_first_frame(first_file_path, canvas_height, canvas_width )
+        width = int(canvas_list[i].cget('width'))
+        height = int(canvas_list[i].cget('height'))
+        #
+        # make tkimage from the file and put in on the canvas
+        #
+        if is_picture_file(file_path[i]):
+            #
+            # Create photo image and assign to a function attribute. These are attached to the function definition, so
+            # the values are not garbage collected after the function returns. There is a spectrum of opinion on
+            # whether this approach is "Pythonic" or an abuse of this mechanism, but it is a simple way of keeping
+            # this data in memory, which is what TK needs to happen.
+            #
+            on_summary_select.photo[i] = make_pic_for_canvas(file_path[i], height, width)
+        elif is_video_file(file_path[i]):
+            on_summary_select.photo[i] = get_first_frame(file_path[i], height, width )
+        #
+        # put the image onto the canvas. We test to make sure there is an image first. This could fail if file is not
+        # recognized as a photo or video file.
+        #
+        if on_summary_select.photo[i]:
+            canvas_list[i].delete('all')
+            canvas_list[i].create_image(width//2, height//2, image=on_summary_select.photo[i], anchor=CENTER)
 
-    if on_summary_select.photo1:
-        image_canvas1.delete('all')
-        image_canvas1.create_image(canvas_width//2, canvas_height//2, image=on_summary_select.photo1, anchor=CENTER)
-
-    if is_picture_file(last_file_path):
-        on_summary_select.photo2 = make_pic_for_canvas(last_file_path, canvas_height, canvas_width)
-    elif is_video_file(last_file_path):
-        on_summary_select.photo2 = get_first_frame(last_file_path, canvas_height, canvas_width)
-
-    if on_summary_select.photo2:
-        image_canvas2.delete('all')
-        image_canvas2.create_image(canvas_width//2, canvas_height//2, image=on_summary_select.photo2, anchor=CENTER)
-
-    print(on_summary_select.photo1, on_summary_select.photo2)
     return
 
 
 #
-# Create the main window
+# Create the main window and set style and size
 #
 window = Tk()
 s = ttk.Style()
@@ -932,75 +961,89 @@ window.geometry("1400x600")
 # Create a notebook to contain our information pages
 #
 notebook = ttk.Notebook(window)
-summary_page = ttk.Frame(notebook)
-log_page = ttk.Frame(notebook)
-log_text = ScrolledText(log_page, width=60, font='Helvetica 8')
-# log_text.insert(INSERT, 'Page reserved for later')
-notebook.add(summary_page, text='Cards Summary')
-notebook.add(log_page, text='Log')
-
-
-# Create the card file list box, its scrollbar, and the button that populates it
-
-cardfiles_list_box = Listbox(summary_page, height=30, width=60, border=0, selectmode=SINGLE)
-cardfiles_list_box.bind('<<ListboxSelect>>', on_summary_select)
-list_scrollbar = Scrollbar(summary_page, orient="vertical")
-get_card_info_button = Button(window, text='Get Cam Cards', command=getcard_clicked)
-card_info_filter_var = StringVar(window)
-card_info_filter_var.set("Memory Card(s): Show All Files")
-# create a label for reporting status
-status_text = StringVar()
-status_label = Label(window, textvariable=status_text, relief=SUNKEN)
-status_text.set('Status')
-
-
-# set_repos_button = Button(window, text='Set Repository', command=setrepos_clicked)
-# set_repos_button.config(state=DISABLED)
-
-copy_files_button = Button(window, text='Copy Files', command=copyfiles_clicked)
-copy_files_button.config(state=DISABLED)
-card_info_filter_menu = OptionMenu(window,
-                                   card_info_filter_var,
-                                   'Memory Card(s): Show All Files',
-                                   'Memory Card(s): Show New Files')
-card_info_filter_var.trace('w', card_info_filter_changed)
-
-# Set scrollbar to call the list box yview method. This method scrolls the list to a given position.
-# Set the and set the yscrollcommand function of the list box to be the set command of the scrollbar. This tells
-# the scrollbar where to put the top and bottom edges of the slider for accurate visual feedback.
-list_scrollbar.config(command=cardfiles_list_box.yview)
-cardfiles_list_box.config(yscrollcommand=list_scrollbar.set)
-
 #
-# create a canvas for displaying images
+# create canvases for displaying preview images
 #
 canvas_height = 500
 canvas_width = 500
 image_canvas1 = Canvas(window, width=canvas_width, height=canvas_height, bg="gray")
 image_canvas2 = Canvas(window, width=canvas_width, height=canvas_height, bg="gray")
+
+#
+# add the summary page frame with a listbox and scrollbar to the notebook
+#
+summary_page = ttk.Frame(notebook)
+cardfiles_list_box = Listbox(summary_page, height=30, width=60, border=0, selectmode=SINGLE)
+list_scrollbar = Scrollbar(summary_page, orient="vertical")
+notebook.add(summary_page, text='Cards Summary')
+#
+# Set scrollbar to call the list box yview method. This method scrolls the list to a given position.
+# Set the and set the yscrollcommand function of the list box to be the set command of the scrollbar. This tells
+# the scrollbar where to put the top and bottom edges of the slider for accurate visual feedback.
+#
+list_scrollbar.config(command=cardfiles_list_box.yview)
+cardfiles_list_box.config(yscrollcommand=list_scrollbar.set)
+#
+# set up callback for selecting a line in the list box. We pass the event and the canvases to the callback
+# by defining the callback as a lambda function that calls the real callback, passing these arguments. The canvases are
+# passed by setting them in a list as default argument values.
+#
+cardfiles_list_box.bind('<<ListboxSelect>>',
+                        lambda event, arg=[image_canvas1, image_canvas2]: on_summary_select(event, arg))
+#
+# add the log page frame with a scrolled text widget to the notebook
+#
+log_page = ttk.Frame(notebook)
+log_text = ScrolledText(log_page, width=60, font='Helvetica 8')
+notebook.add(log_page, text='Log')
+#
+# Create a button to populate the summary page
+#
+get_card_info_button = Button(window, text='Get Cam Cards', command=getcard_clicked)
+#
+# create a menu to select summary filter mode
+#
+card_info_filter_var = StringVar(window)
+card_info_filter_var.set("Memory Card(s): Show All Files")
+card_info_filter_menu = OptionMenu(window,
+                                   card_info_filter_var,
+                                   'Memory Card(s): Show All Files',
+                                   'Memory Card(s): Show New Files')
+card_info_filter_var.trace('w', card_info_filter_changed)
+#
+# create a label for reporting status
+#
+status_text = StringVar()
+status_label = Label(window, textvariable=status_text, relief=SUNKEN)
+status_text.set('Status')
+#
+# Create a button for copying files from the camera card(s) to the repositories and
+# initially disable it (will be enabled when memory card data has been analysed
+#
+copy_files_button = Button(window, text='Copy Files', command=copyfiles_clicked)
+copy_files_button.config(state=DISABLED)
+#
 # Create the exit button
+#
 exit_button = Button(window, text='Exit', command=exit_button_clicked)
-
+#
 # Place Window widgets using grid layout
-
+#
 get_card_info_button.grid(row=0, column=0)
-# set_repos_button.grid(row=0, column=1)
 copy_files_button.grid(row=0, column=2)
 notebook.grid(row=1, column=0, columnspan=3)
 card_info_filter_menu.grid(row=3, column=0, columnspan=2, sticky=W)
 exit_button.grid(row=3, column=2, sticky=E)
 status_label.grid(row=2, column=0, columnspan=3, sticky=E+W)
-# Place the card summary list box and its scrollbar using pack layout
-
-# cardfiles_list_box.pack(side=LEFT)
-# list_scrollbar.pack(side=RIGHT, fill=Y)
+#
+# Place the card summary list box and its scrollbar in its frame using grid layout
+#
 cardfiles_list_box.grid(column=0, row=0)
 list_scrollbar.grid(column=1, row=0, sticky=N+S)
-
-# place the log_text text widget using pack
-# log_text.pack(expand=1, fill='both')
+#
+# Place the log text box to fill its notebook page
+#
 log_text.grid(column=0, row=0, sticky=E+W+N+S)
-
 #
 # place canvas
 #
