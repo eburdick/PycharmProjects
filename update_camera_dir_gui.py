@@ -102,37 +102,23 @@ from resizeimage import resizeimage
 import numpy as np
 import cv2
 
-# import webbrowser
-#from tkinter.filedialog import askopenfilename
-#import vlc
-
-# from datetime import datetime        # redundant?
-
-
-#
-# utility function to reformat the EXIF time format to our file prefix format...
-# YYYY:MM:DD HH:MM:SS --> YYYYMMDD-HHMMSS.
-#
-
 
 def exiftime_to_file_prefix(exif_time):
+    #
+    # utility function to reformat the EXIF time format to our file prefix format...
+    # YYYY:MM:DD HH:MM:SS --> YYYYMMDD-HHMMSS.
+    #
     return exif_time[0:4]+exif_time[5:7]+exif_time[8:10]+'-'+exif_time[11:13]+exif_time[14:16]+exif_time[17:19]
 
 
-
-
-
-
-#
-# Function to change all three timestamps of a file...creation time, modify time and access time. We will use
-# this for matching these timestamps in picture files to the EXIF metadata in the file. This helps with the
-# problem of burst photos taken several a second having file timestamps that are off by a couple of seconds because
-# they are written to the memory card from the camera buffer in an unpredictable order.  The EXIF original time tag
-# records when the picture was captured, not when it was written to the memory card.
-#
-
-
 def change_file_times(fname, timestamp):
+    #
+    # Function to change all three timestamps of a file...creation time, modify time and access time. We will use
+    # this for matching these timestamps in picture files to the EXIF metadata in the file. This helps with the
+    # problem of burst photos taken several a second having file timestamps that are off by a couple of seconds because
+    # they are written to the memory card from the camera buffer in an unpredictable order.  The EXIF original time tag
+    # records when the picture was captured, not when it was written to the memory card.
+    #
     newtime = datetime.strptime(timestamp, '%Y%m%d-%H%M%S')  # format matches our renamed file timestamp prefix
     wintime = pywintypes.Time(newtime)
     #
@@ -152,7 +138,6 @@ def change_file_times(fname, timestamp):
     #
     winfile.close()
     return
-
 
 #
 # starting camera and memory card information for our cameras...
@@ -199,6 +184,10 @@ for cam_dict in camera_info:
 
 
 def get_camera_info():
+    #
+    # function for getting the camera_info structure. This is a little cleaner than just using the structure
+    # as a global variable. This should probably be a CameraInfo class.
+    #
     return camera_info
 
 
@@ -234,6 +223,9 @@ DATEINFOLASTFILE = 2
 
 
 def is_picture_file(file_name):
+    #
+    # check if a file name has a picture file extension
+    #
     file_extension = os.path.splitext(file_name)[EXTENSION]
     if file_extension in PICTURE_EXTENSIONS:
         return True
@@ -242,6 +234,9 @@ def is_picture_file(file_name):
 
 
 def is_video_file(file_name):
+    #
+    # check if a file name has a video file extension
+    #
     file_extension = os.path.splitext(file_name)[EXTENSION]
     if file_extension in VIDEO_EXTENSIONS:
         return True
@@ -255,15 +250,11 @@ def get_cam_cards_info():
     #    - A list of the drive paths to this camera's cards
     #    - A list of the files on all of the cards and the date and time the corresponing images were captured
     #
-
-    #
     # Get a list of all mounted drives. This will include any mounted camera memory card(s). This is a list
     # of two element dictionaries, each containing:
     #    'label' The volume label of the drive. This is extracted using the win32api.GetVolumeInformation method
     #    'path' The path to the volume
     #
-    # !!!This code is Windows specific because it uses a call to win323api to get the volume label. To run on
-    # a different platform, there would need to be alternate code for that platform.
     mounted_drives = []
     for ltr in ascii_uppercase:
         drive_path = ltr + ':\\'
@@ -279,11 +270,6 @@ def get_cam_cards_info():
     #     Add a 'new_repository_dir' to each camera data structure that has a corresponging mounted memory card.
     #         This is the name of the directory that we will create when with copy files from the card(s).
     #
-    # !!! the commented out code should not be needed because this fuction should never be called more than once
-    # for cam in get_camera_info():   # delete any card_path_list in each camera_info
-    #    if 'card_path_list' in cam:
-    #        del cam['card_path_list']
-
     cam_cards_count = 0
     for drive in mounted_drives:        # iterate over all mounted drives
         for cam in get_camera_info():   # for each mounted drive, iterate over our camera definition
@@ -306,7 +292,6 @@ def get_cam_cards_info():
                     # the card path list for the camera
                     #
                     cam['card_path_list'].append(drive['path'])
-
     #
     # At this point, we have path data for all memory cards present. For each memory card, we want to catalog
     # each of its files with the following information:
@@ -315,8 +300,6 @@ def get_cam_cards_info():
     #    camera memory card path to the file
     # Each file will be in a directory on the card created by the camera. Besides knowing the path to the file, we
     # do not care which of these directories it is in, and we will sort the files by time stamp.
-    #
-
     #
     # Create a list of the media files from the camera cards we found.  These will be in the directory DCIM\subdir,
     # where subdir is assigned by the camera.  We walk the entire card below the DCIM directory.  Note we are assuming
@@ -336,9 +319,9 @@ def get_cam_cards_info():
                     #
                     for file in file_list:
                         file_full_path = dir_name+'\\'+file
-                        file_extension = os.path.splitext(file)[EXTENSION]
-
+                        #
                         # GUI...Update status label and add the file to the log
+                        #
                         status_text.set('Found {}'.format(file_full_path))
                         status_label.update()
                         log_text.insert(END, 'Found {}\n'.format(file_full_path))
@@ -410,7 +393,6 @@ def make_today_dir():
                 log_text.insert(END,
                                 '{} making repository dir {}\n'.format(cam['name'], cam['new_repository_dir']))
             log_text.yview_pickplace('end')  # Scroll log text to the bottom
-
     return
 
 
@@ -459,7 +441,6 @@ def copy_and_rename():
     # modify the file's create, modify and access metadata to match it. Before each copy, we check see if the file is
     # newer than the last repository file, and when this fails to be the case, we break out of the loop.
     #
-
     notebook.select(log_page)       # open the notebook to the log page
     notebook.update()
     for cam in get_camera_info():
@@ -522,7 +503,7 @@ def copy_and_rename():
 
 
 #
-# Graphical User Interface
+# Graphical User Interface code
 #
 
 #
@@ -678,8 +659,10 @@ def add_camcards_summary():
 
 
 def exit_button_clicked():
+    #
+    # exit the program
+    #
     sys.exit(1)
-    return
 
 
 def getcard_clicked():
@@ -701,33 +684,33 @@ def getcard_clicked():
         for cam in get_camera_info():
             if 'card_path_list' in cam:
                 count += len(cam['card_path_list'])
-
     #
     # Populate the camera data structures with information about the correponding existing repository directories. A
     # side effect of this operation is identifying the latest file in each camera repository, and creating a new
     # subdirectory in the repository for today's new files.
     #
     find_repository_last_files()
-
+    #
     # disable the button to avoid scanning the camera cards again.
+    #
     get_card_info_button.config(state=DISABLED)
-
+    #
     # enable the file copy button
+    #
     copy_files_button.config(state=NORMAL)
     #
     # create the camera memory card summary
     #
     add_camcards_summary()
-
     #
     # put file camera card summaries on the summary list box. Format:
     #
     # Camera name 1
     #    card path 1
     #       directory1
-    #          date1, first file, last file
+    #          date1: first file - last file
     #          ...
-    #          dateN
+    #          dateN: first file - last file
     #       ...
     #          ...
     #       directoryN
@@ -820,7 +803,7 @@ def make_pic_for_canvas(filename, height, width):
     # will only be passed Tk recognized image files.
     #
     pic = Image.open(filename)
-    pic = resizeimage.resize_contain(pic, [height, width])
+    pic = resizeimage.resize_contain(pic, [width, height])
     f = open(filename, 'rb')
     tags = exifread.process_file(f, details=False, stop_tag='Image Orientation')
     if 'Image Orientation' in tags:
@@ -835,6 +818,10 @@ def make_pic_for_canvas(filename, height, width):
 
 
 def get_first_frame(vidfile, height, width):
+    #
+    # This function opens a video file, gets a frame from it, resizes the frame to fit our canvase,
+    # and creates a Tk image from the result.
+    #
     vidcap = cv2.VideoCapture(vidfile)
     #
     # Read a frame from the video capture object
@@ -868,7 +855,6 @@ def on_summary_select(evt, canvas_list):
     w = evt.widget
     index = int(w.curselection()[0])
     value = w.get(index)
-
     #
     # If the selected line is one with file names, parse out the file names.  We determine such lines based on
     # the format chosen (date=string: first_file - last_file), which are the only lines containing both : and -
@@ -884,9 +870,8 @@ def on_summary_select(evt, canvas_list):
         #
         return
     #
-    # create working lists for static photo storage and file path
+    # create and initialize working list for the file paths
     #
-    on_summary_select.photo = [None, None]
     file_path = [None, None]
     #
     # Find the file names in the camera file lists.  We search all cameras here because the likelihood of
@@ -899,10 +884,10 @@ def on_summary_select(evt, canvas_list):
             for file, time in cam['files_with_times']:
                 if last_file in file:
                     # set path to last file
-                    file_path[0] = file
+                    file_path[1] = file
                 if first_file in file:
                     # set path to first file
-                    file_path[1] = file
+                    file_path[0] = file
                     #
                     # because the file list we are searching is in reverse order, we know we have already
                     # found the last file and the first file when we get here, so we can break out of the
@@ -914,10 +899,19 @@ def on_summary_select(evt, canvas_list):
             break
 
     #
-    # We have two file paths and two canvases arranged in lists. Display first path file on first canvas and
-    # second path file on second canvas
+    # create an instance of PreviewImages(). This is where we are going to store our preview images. The class
+    # __init__ method clears the old value. Note when this function returns, the instance will be garbage collected,
+    # but because the attribute we are using is a class variable, not an instance variable, it retains its value
+    # so the canvases will have something to display.
     #
-    for i in range(0,2):
+    previews = PreviewImages()
+    #
+    # We have two file paths and two canvases arranged in lists. Display first path file on first canvas and
+    # second path file on second canvas. Note that the images we display on the canvas need to remain in memory
+    # after this function returns, or they will disappear from the canvas. To make this happen, we store these
+    # images in a class attribute, PreviewImages.img, which is a list of two images.
+    #
+    for i in range(0, 2):
         #
         # Get canvas width and height
         #
@@ -927,24 +921,40 @@ def on_summary_select(evt, canvas_list):
         # make tkimage from the file and put in on the canvas
         #
         if is_picture_file(file_path[i]):
-            #
-            # Create photo image and assign to a function attribute. These are attached to the function definition, so
-            # the values are not garbage collected after the function returns. There is a spectrum of opinion on
-            # whether this approach is "Pythonic" or an abuse of this mechanism, but it is a simple way of keeping
-            # this data in memory, which is what TK needs to happen.
-            #
-            on_summary_select.photo[i] = make_pic_for_canvas(file_path[i], height, width)
+            previews.set_img(i, make_pic_for_canvas(file_path[i], height, width))
         elif is_video_file(file_path[i]):
-            on_summary_select.photo[i] = get_first_frame(file_path[i], height, width )
+            previews.set_img(i, get_first_frame(file_path[i], height, width))
+
         #
-        # put the image onto the canvas. We test to make sure there is an image first. This could fail if file is not
-        # recognized as a photo or video file.
+        # put the image onto the canvas. We test to make sure there is an image first. This test could fail if
+        # the file is not recognized as a photo or video file.
         #
-        if on_summary_select.photo[i]:
+        if previews.img[i]:
+
             canvas_list[i].delete('all')
-            canvas_list[i].create_image(width//2, height//2, image=on_summary_select.photo[i], anchor=CENTER)
+            canvas_list[i].create_image(width // 2, height // 2, image=previews.img[i], anchor=CENTER)
 
     return
+
+
+class PreviewImages:
+    #
+    # This class holds the state of the preview images we display on image canvases. img is a class variable,
+    # so it survives the garbage collection of its instances.
+    #
+    img = [None, None]
+
+    #
+    # clear img when and new instance is created. We want img to hold any value it is set to by and instance,
+    # but we never expect more than one instance at a time, and we test the values before trying to use
+    # them, so initializing to None meets those needs
+    #
+    def __init__(self):
+        self.img[0] = None
+        self.img[1] = None
+
+    def set_img(self, idx, img):
+        self.img[idx] = img
 
 
 #
@@ -954,7 +964,9 @@ window = Tk()
 s = ttk.Style()
 s.theme_use('xpnative')
 s.configure('window.TFrame', font=('Helvetica', 20))
-
+#
+# create and size the main window
+#
 window.title('Camera Memory Card Tool')
 window.geometry("1400x600")
 #
@@ -968,7 +980,6 @@ canvas_height = 500
 canvas_width = 500
 image_canvas1 = Canvas(window, width=canvas_width, height=canvas_height, bg="gray")
 image_canvas2 = Canvas(window, width=canvas_width, height=canvas_height, bg="gray")
-
 #
 # add the summary page frame with a listbox and scrollbar to the notebook
 #
@@ -1045,29 +1056,10 @@ list_scrollbar.grid(column=1, row=0, sticky=N+S)
 #
 log_text.grid(column=0, row=0, sticky=E+W+N+S)
 #
-# place canvas
+# place canvases
 #
-
-#
-# function to get open and image file, resize it to fit a specific canvas size, rotate it based on the image
-# orientation in the file's EXIF data, and create a PhotoImage for display on a tkint canvas.
-#
-#photo1 = 0
-#photo2 = 0
-
 image_canvas1.grid(column=3, row=1)
 image_canvas2.grid(column=4, row=1)
-
-#
-# Try out video stuff
-#
-# vidfile = 'L:\\DCIM\\103ND500\\DSC_1546.MOV'
-#
-# Create a video capture object from the file
-#
-
-
-#image_canvas2.create_image(canvas_width//2, canvas_height//2, image=photo1, anchor=CENTER)
 #
 # start gui main loop
 #
