@@ -101,6 +101,13 @@ from PIL import Image, ImageTk
 from resizeimage import resizeimage
 import numpy as np
 import cv2
+import rawpy
+
+#
+# import site specific camera information
+#
+import my_camera_data
+
 
 
 def exiftime_to_file_prefix(exif_time):
@@ -139,33 +146,6 @@ def change_file_times(fname, timestamp):
     winfile.close()
     return
 
-#
-# starting camera and memory card information for our cameras...
-#
-# This takes the form of a list of dictionaries, one list element for each camera. Each dictionary contains
-#    'name' The name of the camera
-#    'card_pattern' A regular expression pattern that matches the volume label of that camera's memory card(s)
-#    'repository_base' The path to the top of that camera's directory tree on the computer
-#
-# note this is the starting form of these dictionaries.  More will be added if we find memory cards associated
-# with these cameras as follows:
-#    'processed': Initialized to False and set to True when this dictionary is processed in any way
-#    'files_with_times': Initialized as an empty list. Records the media files on the memory cards for this cameraa
-#                        and their creation timestamps
-#    'card_path_list': a list of paths to memory cards for this camera eg ['H:\','J:\']
-#    'new_repository_dir': path to directory for new files named from today's date, eg
-#                    'V:\Camera-buf\nikon-d500\renamed copies of flash memory\2018-07-27'
-#
-#
-camera_info = [
-    {'name': 'Nikon D500',
-     'card_pattern': re.compile('.*d500', re.IGNORECASE),  # pattern: any characters followed by "d500"
-     'repository_base': 'V:\\Camera-buf\\nikon-d500\\renamed copies of flash memory\\',
-     'digital_camera_image_path': 'DCIM\\'},  # camera card directory containing media files
-    {'name': 'Nikon Coolpix B700',
-     'card_pattern': re.compile('.*b700', re.IGNORECASE),  # pattern: any characters followed by "b700"
-     'repository_base': 'V:\\Camera-buf\\nikon-coolpix-b700\\renamed copies of flash memory\\',
-     'digital_camera_image_path': 'DCIM\\'}]
 
 #
 # add and initialize working keys and values to the camera dictionaries
@@ -178,7 +158,8 @@ camera_info = [
 #                         ('H:\\DCIM\110NIKON\DSC_1234.JPG', '171224-173053')
 #                         ('J:\\DCIM\110NIKON\DSC_1235.NEF', '171224-173503')...]
 #
-for cam_dict in camera_info:
+
+for cam_dict in my_camera_data.camera_info:
     cam_dict['processed'] = False
     cam_dict['files_with_times'] = []
 
@@ -188,7 +169,7 @@ def get_camera_info():
     # function for getting the camera_info structure. This is a little cleaner than just using the structure
     # as a global variable. This should probably be a CameraInfo class.
     #
-    return camera_info
+    return my_camera_data.camera_info
 
 
 #
@@ -196,6 +177,7 @@ def get_camera_info():
 # exif information.
 #
 PICTURE_EXTENSIONS = ['.jpg', '.JPG', '.nef', '.NEF', '.nrw', '.NRW']
+RAW_EXTENSIONS = ['.NEF', '.nef', '.nrw', '.NRW']
 VIDEO_EXTENSIONS = ['.MP4', '.mp4', '.MOV', '.mov']
 #
 # index constants for files_with_times tuple
@@ -232,6 +214,16 @@ def is_picture_file(file_name):
     else:
         return False
 
+
+def is_raw_file(file_name):
+    #
+    # check if a file name has a raw file extension
+    #
+    file_extension = os.path.splitext(file_name)[EXTENSION]
+    if file_extension in RAW_EXTENSIONS:
+        return True
+    else:
+        return False
 
 def is_video_file(file_name):
     #
@@ -796,13 +788,39 @@ def card_info_filter_changed(*args):
 
 def make_pic_for_canvas(filename, height, width):
     #
-    # This function takes a file name and a canvas height and width and creates and image
+    # This function takes a file name and a canvas height and width and creates an image
     # properly scaled and rotated to fit on a Tk canvas of those dimentions. The assumption
     # is that this file come from a camera containing the EXIF flag Image Orientation tag, but
     # if this tag is absent, the orientation part is skipped. It is assumed that this function
     # will only be passed Tk recognized image files.
     #
-    pic = Image.open(filename)
+    if is_raw_file(filename):
+        #
+        # create a rawpy image object from the file
+        #
+        raw_image = rawpy.imread(filename)
+        #
+        # postprocess does processing on the raw image and puts the pixels into an array. We specify options
+        # to use the while balance value specified by the camera and to not "flip" the image.  Without this,
+        # the image will be rotated based on the camera orientation when the picture was shot. Because we do
+        # that rotation below for both raw and jpg files, we disable this function. Half size merges each 4x4
+        # pixel block into a single pixel, resulting is a lower resolution, but a smaller array good enough for
+        # our preview.
+        #
+        raw_array = raw_image.postprocess(use_camera_wb=True, user_flip=0, half_size=True)
+        #
+        # create an image from the array
+        #
+        pic = Image.fromarray(raw_array)
+    else:
+        pic = Image.open(filename)
+
+    #
+    # at this point we have an openCV image either from reading a jpg file or from reading and processing
+    # a raw file. We resize the image to fit a preview canvas, then we open the file an extract the EXIF tags
+    # to find the camera orientation at the time of the shot. If we find it, we rotate the image to turn it
+    # right side up.
+    #
     pic = resizeimage.resize_contain(pic, [width, height])
     f = open(filename, 'rb')
     tags = exifread.process_file(f, details=False, stop_tag='Image Orientation')
@@ -813,7 +831,9 @@ def make_pic_for_canvas(filename, height, width):
             pic = pic.rotate(180)
         elif 'Rotated 270 CW' in str(tags['Image Orientation']):
             pic = pic.rotate(-270)
-
+    #
+    # Convert the image to a TK image object and return it.
+    #
     return ImageTk.PhotoImage(pic)
 
 
@@ -838,8 +858,14 @@ def get_first_frame(vidfile, height, width):
     # image and put it on the canvas
     #
     pic = Image.fromarray(cv2image)
+    #
+    # resize the image to fit the canvas
+    #
     pic = resizeimage.resize_contain(pic, [height, width])
-    return ImageTk.PhotoImage(image=pic)
+    #
+    # convert the image to a Tk image object and return it
+    #
+    return ImageTk.PhotoImage(pic)
 
 
 def on_summary_select(evt, canvas_list):
