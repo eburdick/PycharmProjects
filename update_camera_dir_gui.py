@@ -109,7 +109,6 @@ import rawpy
 import my_camera_data
 
 
-
 def exiftime_to_file_prefix(exif_time):
     #
     # utility function to reformat the EXIF time format to our file prefix format...
@@ -173,13 +172,6 @@ def get_camera_info():
 
 
 #
-# list of file extensions for picture files. We use this to distinguish these from video files when we get
-# exif information.
-#
-PICTURE_EXTENSIONS = ['.jpg', '.JPG', '.nef', '.NEF', '.nrw', '.NRW']
-RAW_EXTENSIONS = ['.NEF', '.nef', '.nrw', '.NRW']
-VIDEO_EXTENSIONS = ['.MP4', '.mp4', '.MOV', '.mov']
-#
 # index constants for files_with_times tuple
 #
 FILENAME = 0
@@ -209,7 +201,7 @@ def is_picture_file(file_name):
     # check if a file name has a picture file extension
     #
     file_extension = os.path.splitext(file_name)[EXTENSION]
-    if file_extension in PICTURE_EXTENSIONS:
+    if file_extension in my_camera_data.PICTURE_EXTENSIONS:
         return True
     else:
         return False
@@ -220,20 +212,22 @@ def is_raw_file(file_name):
     # check if a file name has a raw file extension
     #
     file_extension = os.path.splitext(file_name)[EXTENSION]
-    if file_extension in RAW_EXTENSIONS:
+    if file_extension in my_camera_data.RAW_EXTENSIONS:
         return True
     else:
         return False
+
 
 def is_video_file(file_name):
     #
     # check if a file name has a video file extension
     #
     file_extension = os.path.splitext(file_name)[EXTENSION]
-    if file_extension in VIDEO_EXTENSIONS:
+    if file_extension in my_camera_data.VIDEO_EXTENSIONS:
         return True
     else:
         return False
+
 
 def get_cam_cards_info():
     #
@@ -319,7 +313,7 @@ def get_cam_cards_info():
                         log_text.insert(END, 'Found {}\n'.format(file_full_path))
                         file_extension = os.path.splitext(file)[EXTENSION]
 
-                        if file_extension in PICTURE_EXTENSIONS:
+                        if file_extension in my_camera_data.PICTURE_EXTENSIONS:
                             #
                             # This is a picture file with EXIF metadata: Open the file for binary read and get the
                             # DateTimeOriginal metadata
@@ -868,7 +862,7 @@ def get_first_frame(vidfile, height, width):
     return ImageTk.PhotoImage(pic)
 
 
-def on_summary_select(evt, canvas_list):
+def on_summary_select(evt):
     #
     # This is the callback function for a selection change in the memory card summary list. If the user clicks
     # on a line with file names (first and last for a given date) then this code will display a preview of each
@@ -925,12 +919,15 @@ def on_summary_select(evt, canvas_list):
             break
 
     #
-    # create an instance of PreviewImages(). This is where we are going to store our preview images. The class
-    # __init__ method clears the old value. Note when this function returns, the instance will be garbage collected,
-    # but because the attribute we are using is a class variable, not an instance variable, it retains its value
-    # so the canvases will have something to display.
+    # create instances of PreviewImages() and ImageCanvases. This is where we are going to store our preview images
+    # and the canvases we are going to display them on. The PreviewImages class __init__ method clears the old value.
+    # Note when this function returns, the instance will be garbage collected, but because the attribute we are using
+    # is a class variable, not an instance variable, it retains its value so the canvases will have something to
+    # display. Similarly, the canvases are also class variables, and are only created when the GUI is initialized,
+    # so these values will never change.
     #
     previews = PreviewImages()
+    can = ImageCanvases()
     #
     # We have two file paths and two canvases arranged in lists. Display first path file on first canvas and
     # second path file on second canvas. Note that the images we display on the canvas need to remain in memory
@@ -941,8 +938,8 @@ def on_summary_select(evt, canvas_list):
         #
         # Get canvas width and height
         #
-        width = int(canvas_list[i].cget('width'))
-        height = int(canvas_list[i].cget('height'))
+        width = int(can.canvases[i].cget('width'))
+        height = int(can.canvases[i].cget('height'))
         #
         # make tkimage from the file and put in on the canvas
         #
@@ -957,8 +954,8 @@ def on_summary_select(evt, canvas_list):
         #
         if previews.img[i]:
 
-            canvas_list[i].delete('all')
-            canvas_list[i].create_image(width // 2, height // 2, image=previews.img[i], anchor=CENTER)
+            can.canvases[i].delete('all')
+            can.canvases[i].create_image(width // 2, height // 2, image=previews.img[i], anchor=CENTER)
 
     return
 
@@ -969,7 +966,6 @@ class PreviewImages:
     # so it survives the garbage collection of its instances.
     #
     img = [None, None]
-
     #
     # clear img when and new instance is created. We want img to hold any value it is set to by and instance,
     # but we never expect more than one instance at a time, and we test the values before trying to use
@@ -982,7 +978,25 @@ class PreviewImages:
     def set_img(self, idx, img):
         self.img[idx] = img
 
+    def set_canvas(self, idx, can):
+        self.canvases[idx] = can
 
+
+class ImageCanvases:
+    #
+    # This class holds the state of the canvases on which we display preview images. canvases is a class variable,
+    # so it survives the garbage collection of its instances.
+    #
+    canvases = [None, None]
+    #
+    # initialize canvases when a new instance is created. We want camvases to hold any value it is set to by an
+    # instance,
+    # but we never expect more than one instance at a time, and we test the values before trying to use
+    # them, so initializing to None meets those needs
+    #
+
+    def set_canvas(self, idx, can):
+        self.canvases[idx] = can
 #
 # Create the main window and set style and size
 #
@@ -1000,12 +1014,14 @@ window.geometry("1400x600")
 #
 notebook = ttk.Notebook(window)
 #
-# create canvases for displaying preview images
+# create canvases for displaying preview images. We keep these canvases in a class variable in ImageCanvases
+# so we can reference it in callbacks
 #
 canvas_height = 500
 canvas_width = 500
-image_canvas1 = Canvas(window, width=canvas_width, height=canvas_height, bg="gray")
-image_canvas2 = Canvas(window, width=canvas_width, height=canvas_height, bg="gray")
+image_canvas = ImageCanvases()
+image_canvas.set_canvas(0, Canvas(window, width=canvas_width, height=canvas_height, bg="gray"))
+image_canvas.set_canvas(1, Canvas(window, width=canvas_width, height=canvas_height, bg="gray"))
 #
 # add the summary page frame with a listbox and scrollbar to the notebook
 #
@@ -1021,12 +1037,10 @@ notebook.add(summary_page, text='Cards Summary')
 list_scrollbar.config(command=cardfiles_list_box.yview)
 cardfiles_list_box.config(yscrollcommand=list_scrollbar.set)
 #
-# set up callback for selecting a line in the list box. We pass the event and the canvases to the callback
-# by defining the callback as a lambda function that calls the real callback, passing these arguments. The canvases are
-# passed by setting them in a list as default argument values.
+# Set up callback for selecting a line in the list box. We bind ListboxSelect and pass the event
+# to the callback.
 #
-cardfiles_list_box.bind('<<ListboxSelect>>',
-                        lambda event, arg=[image_canvas1, image_canvas2]: on_summary_select(event, arg))
+cardfiles_list_box.bind('<<ListboxSelect>>', on_summary_select)
 #
 # add the log page frame with a scrolled text widget to the notebook
 #
@@ -1084,8 +1098,8 @@ log_text.grid(column=0, row=0, sticky=E+W+N+S)
 #
 # place canvases
 #
-image_canvas1.grid(column=3, row=1)
-image_canvas2.grid(column=4, row=1)
+image_canvas.canvases[0].grid(column=3, row=1)
+image_canvas.canvases[1].grid(column=4, row=1)
 #
 # start gui main loop
 #
