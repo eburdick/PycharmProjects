@@ -83,12 +83,12 @@
 #
 import os
 import shutil          # high level file operations like copy, rename, etc
-import win32api        # windows specific operations
+import win32api        # windows specific operations (pip install pywin32)
 import win32file       # windows specific file stuff
 import pywintypes      # supports common windows types like times
 import win32con        # windows constants
 import re              # the regular expression module
-import exifread        # media file metadata stuff we use it for getting timestamps
+import exifread        # media file metadata stuff we use it for getting timestamps (pip install exifread)
 import subprocess      # subprocess utilities for spawning applications like exiftool
 from subprocess import Popen
 from datetime import datetime, date  # date and time related utilities
@@ -96,12 +96,14 @@ from string import ascii_uppercase   # pretty self explanitory
 from tkinter import *                # GUI stuff
 from tkinter import ttk              # more widgets
 from tkinter.scrolledtext import ScrolledText  # not sure why we need to import a module for scrolled text
+from tkinter import filedialog
 import tkinter.font                  # GUI font stuff
-from PIL import Image, ImageTk
-from resizeimage import resizeimage
-import numpy as np
-import cv2
-import rawpy
+from PIL import Image, ImageTk       # (pip install Pillow)
+from resizeimage import resizeimage  # (pip install python-resize-image)
+import numpy as np                   # (pip install numpy)
+import cv2                           # (pip install opencv-python)
+import rawpy                         # (pip install rawpy)
+
 
 #
 # import site specific camera information
@@ -169,6 +171,12 @@ def get_camera_info():
     # as a global variable. This should probably be a CameraInfo class.
     #
     return my_camera_data.camera_info
+
+def get_backup_drive_info():
+    return my_camera_data.backup_drive_info
+
+def get_temp_source_info():
+    return my_camera_data.temp_source_info
 
 
 #
@@ -248,7 +256,7 @@ def get_cam_cards_info():
             mounted_drives.append(
                 {'label': win32api.GetVolumeInformation(drive_path)[VOLUME_NAME],
                  'path': drive_path})
-
+    print(mounted_drives)
     #
     # scan all drive labels for matches to our camera cards. Where a match is found:
     #     Increment cam_cards_count
@@ -278,20 +286,136 @@ def get_cam_cards_info():
                     # the card path list for the camera
                     #
                     cam['card_path_list'].append(drive['path'])
+    # scan all drive labels for matches to our backup drives. We assume a backup drive has a structure like this...
+    # drive:\camera1\DCIM\directory1\media files...
+    #                    \directory2\media files...
+    #                    ...
+    #       \camera2\DCIM\directory1\media files...
+    #                    \...
+    # backup drive labels will match backup_drive_info['drive_pattern']
+    # camera2, camera2, etc come from the camera info dictionaries, cam['card_pattern']
     #
-    # At this point, we have path data for all memory cards present. For each memory card, we want to catalog
-    # each of its files with the following information:
+    for drive in mounted_drives:
+        drivepath = drive['path']
+        if get_backup_drive_info()['drive_pattern'].match(drive['label']):
+            #
+            # we have identified a backup drive.  Now we scan its top level directories for matches to our
+            # cameras.
+            #
+            level_1_dirs = [d for d in os.listdir(drivepath) if os.path.isdir(os.path.join(drivepath, d))]
+            #
+            # loop through level 1 directories on this backup drive
+            #
+            for dir in level_1_dirs:
+                #
+                # loop through cameras
+                #
+                for cam in get_camera_info():
+                    #
+                    # check whether the camera card_pattern matches the directory name
+                    #
+                    if cam['card_pattern'].match(dir):
+                        cam_cards_count += 1
+                        #
+                        # add the path to this directory to the camera dictionary
+                        #
+                        if 'card_path_list' not in cam:
+                            #
+                            # The data structure for this camera has not had card data added yet. Here, we add those
+                            # entries...
+                            # - card_path_list with a path to the first card
+                            # - path to a new directory where we will copy the new files.
+                            #
+                            cam['card_path_list'] = [drive['path']+dir+'\\']
+                            cam['today_dir'] = str(date.today())
+                            cam['new_repository_dir'] = cam['repository_base'] + cam['today_dir']
+                        else:
+                            #
+                            # The dictionary for this camera already has entries for a file source, which means we have
+                            # found an additional file source for this camera. We just need to add the path to this
+                            # card to the card path list for the camera
+                            #
+                            cam['card_path_list'].append(drive['path']+dir+'\\')
+    #
+    # check if there is a temp_source directory. This is a temporary location on the computer for importing files
+    # that are not from our regular cameras or backup drives. We require that it have the same structure as our
+    # backup drives:
+    # temp_source_root\camera1\DCIM\directory1\media files...
+    #                              \directory2\media files...
+    #                              ...
+    #                 \camera2\DCIM\directory1\media files...
+    #                              \...
+    #
+    # temp_source_root is the root of the directory tree chosen by the user
+    # camera2, camera2, etc come from the camera info dictionaries, cam['card_pattern']
+    #
+    # test if the user has specifed a temp_source_root.  If so, traverse the directories under it and add the files
+    # to the camera_info dictionaries as we did above.
+    #
+    # !!!Note this code is close to identical to the backup drive code, so we should probably put it into a function
+    tmpsrc = TempSource()
+    tmpsrcroot = tmpsrc.temp_source_root
+    if tmpsrc.temp_source_root:
+        #
+        # we have identified the temp source directory.  Now we scan its top level directories for matches to our
+        # cameras.
+        #
+        level_1_dirs = [d for d in os.listdir(tmpsrcroot) if os.path.isdir(os.path.join(tmpsrcroot, d))]
+        #
+        # loop through level 1 directories
+        #
+        for dir in level_1_dirs:
+            #
+            # loop through cameras
+            #
+            for cam in get_camera_info():
+                #
+                # check whether the camera card_pattern matches the directory name
+                #
+                if cam['card_pattern'].match(dir):
+                    cam_cards_count += 1
+                    #
+                    # add the path to this directory to the camera dictionary
+                    #
+                    if 'card_path_list' not in cam:
+                        #
+                        # The data structure for this camera has not had card data added yet. Here, we add those
+                        # entries...
+                        # - card_path_list with a path to the first card
+                        # - path to a new directory where we will copy the new files.
+                        #
+                        cam['card_path_list'] = [tmpsrcroot + dir + '\\']
+                        cam['today_dir'] = str(date.today())
+                        cam['new_repository_dir'] = cam['repository_base'] + cam['today_dir']
+                    else:
+                        #
+                        # The dictionary for this camera already has entries for a file source, which means we have
+                        # found an additional file source for this camera. We just need to add the path to this
+                        # card to the card path list for the camera
+                        #
+                        cam['card_path_list'].append(tmpsrc.temp_source_root + dir + '\\')
+
+    #
+    #
+    #
+    # At this point, we have found all of the camera data paths in all backup drives and added them to the
+    # appropriate camera data dictionaries.
+    #
+
+    # At this point, we have path data for all memory cards and backup drives present. For each source, we want to
+    # catalog each of its files with the following information:
     #    file name
     #    time created (the time of the actual shot in the camera)
-    #    camera memory card path to the file
+    #    path to the file
     # Each file will be in a directory on the card created by the camera. Besides knowing the path to the file, we
     # do not care which of these directories it is in, and we will sort the files by time stamp.
     #
-    # Create a list of the media files from the camera cards we found.  These will be in the directory DCIM\subdir,
+    # Create a list of the media files from the source drives we found.  These will be in the directory DCIM\subdir,
     # where subdir is assigned by the camera.  We walk the entire card below the DCIM directory.  Note we are assuming
-    # all of our camera cards are organized with a DCIM top level directory with one layer of sub directories
-    # containing only media files below that. We get the DCIM path from the camera profile
-    # (cam['digital_camera_image_path']) just in case we end up with a camera that does things differently.
+    # all of our camera cards and backup drives are organized with a DCIM directory with one layer of sub directories
+    # containing only media files below that. Any other directories we find below the DCIM directory will be skipped.
+    # We get the DCIM path from the camera profile (cam['digital_camera_image_path']) just in case we end up with a
+    # camera that does things differently (not likely. smart phones even have a dcim directory for thier cameras)
     #
     for cam in get_camera_info():
         if 'card_path_list' in cam:
@@ -306,13 +430,36 @@ def get_cam_cards_info():
                     for file in file_list:
                         file_full_path = dir_name+'\\'+file
                         #
+                        # skip files in directories more than one deep below DCIM, like thumbnail directories
+                        # eg H:\DCIM\100NIKON\.Thumbs.
+                        #
+                        # 1: dir_name is the full path from the drive. Parse it using the \ as a separator.
+                        # 2: get the position in the path of the DCIM directory.
+                        # 3: if DCIM is in the second last position, then the last position is a valid camera directory
+                        # and we will process the files in file_list. Otherwise, we will skip this directory because
+                        # it is not a camera generated image directory.
+                        #
+                        parsed_dir = dir_name.split('\\')
+                        dcim_pos=parsed_dir.index(cam['digital_camera_image_path'])
+                        #
+                        # We want the dcim directory to be in the second last position, so we compare list length
+                        # to dcim position. Since position counts from 0, the second last position is the one
+                        # that matches 2 less than the length.  E.G. list length is 4, and dcim position is 2 (third
+                        # item)  If this test fails, we skip the rest of the loop.
+                        #
+                        if dcim_pos != len(parsed_dir)-2:
+                            log_text.insert(END, 'Skipping {}\n'.format(file_full_path))
+                            continue
+                        #
                         # GUI...Update status label and add the file to the log
                         #
                         status_text.set('Found {}'.format(file_full_path))
                         status_label.update()
                         log_text.insert(END, 'Found {}\n'.format(file_full_path))
                         file_extension = os.path.splitext(file)[EXTENSION]
-
+                        #
+                        # determine that time stamp and add the file to the camera files_with_times list
+                        #
                         if file_extension in my_camera_data.PICTURE_EXTENSIONS:
                             #
                             # This is a picture file with EXIF metadata: Open the file for binary read and get the
@@ -324,10 +471,13 @@ def get_cam_cards_info():
                             # create a tuple of full path file name and timestamp from the EXIF data, then add it to
                             # the camera card file list
                             #
-                            cam['files_with_times'].append(
-                                                           (file_full_path,
-                                                            exiftime_to_file_prefix(
-                                                                str(tags['EXIF DateTimeOriginal']))))
+                            if 'EXIF DateTimeOriginal' in tags:
+                                cam['files_with_times'].append(
+                                                               (file_full_path,
+                                                                exiftime_to_file_prefix(
+                                                                    str(tags['EXIF DateTimeOriginal']))))
+                            else:
+                                print('no exif? {}'.format(file_full_path))
                         else:
                             #
                             # File either does not have EXIF metadata, or exifread cannot process it. Get the file
@@ -553,6 +703,7 @@ def add_camcards_summary():
             dir_list = []        # initialize to prevent Pycharm warning. This value is never used.
 
             for full_path, timestamp in files_with_times:
+                last_file = new_file        # save old file value for use as last_file.
                 #
                 # Iterate through files_with_times
                 #
@@ -561,11 +712,31 @@ def add_camcards_summary():
                 #
                 path_tokens = full_path.split(sep='\\')
                 timestamp_tokens = timestamp.split(sep='-')
-                new_path = path_tokens[0]+'\\'+path_tokens[1]+'\\'
-                new_dir = path_tokens[2]
+                #
+                # The path tokens list looks like one of these:
+                #    backup drive files --> [drive, camera pattern, dcim, camera directory, file name]
+                #    camera card files  --> [drive, dcim, camera directory, file name]
+                #
+                # new_path is the path up to and including the dcim directory
+                # new_dir is the directory under the dcim directory
+                #
+                path_token_count = len(path_tokens)
+                if path_token_count == 4:
+                    new_path = path_tokens[0]+'\\'+path_tokens[1]+'\\'
+                    new_dir = path_tokens[2]
+                    new_file = path_tokens[3]
+                elif path_token_count == 5:
+                    new_path = path_tokens[0]+'\\'+path_tokens[1]+'\\'+path_tokens[2]+'\\'
+                    new_dir = path_tokens[3]
+                    new_file = path_tokens[4]
+                else:
+                    new_path = 'path error'
+                    new_dir = 'dir error'
+                #
+                # The timestamp tokens list is just the date and the time.  We care only about the date here
+                #
                 new_date = timestamp_tokens[0]
-                last_file = new_file        # save old file value for use as last_file.
-                new_file = path_tokens[3]
+
                 #
                 # If the path, the directory and the date are the same as the previous iteration, we skip to the
                 # end of the loop, creating no new summary information
@@ -751,6 +922,29 @@ def getcard_clicked():
                                         date_info[DATEINFOFIRSTFILE],
                                         date_info[DATEINFOLASTFILE]))
     return
+
+
+class TempSource:
+    #
+    # Temp source is a directory tree with the same structure as a backup drive that can serve as an intermediate
+    # location for holding media files for import from sources like smart phones, thumb drives, etc.  This class
+    # maintains the state for this mechanism.
+    #
+    temp_source_root = None
+
+    def set(self, root):
+        self.temp_source_root = root
+
+
+def setsource_clicked():
+    #
+    # This button raises a file selection box to allow the user to select an area on the computer to use
+    # as a source for media files.
+    #
+    tempsource = TempSource()
+    tempsource.temp_source_root=filedialog.askdirectory(title='Pick Temp Source Directory',
+                                                        initialdir=get_temp_source_info()['initial_path'])
+    print(tempsource.temp_source_root)
 
 
 def copyfiles_clicked():
@@ -1052,6 +1246,10 @@ notebook.add(log_page, text='Log')
 #
 get_card_info_button = Button(window, text='Get Cam Cards', command=getcard_clicked)
 #
+# Create a button to set a media file source on the computer
+#
+set_source_button = Button(window, text='Set Temp Source', command=setsource_clicked)
+#
 # create a menu to select summary filter mode
 #
 card_info_filter_var = StringVar(window)
@@ -1081,6 +1279,7 @@ exit_button = Button(window, text='Exit', command=exit_button_clicked)
 # Place Window widgets using grid layout
 #
 get_card_info_button.grid(row=0, column=0)
+set_source_button.grid(row=0, column=1)
 copy_files_button.grid(row=0, column=2)
 notebook.grid(row=1, column=0, columnspan=3)
 card_info_filter_menu.grid(row=3, column=0, columnspan=2, sticky=W)
