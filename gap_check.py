@@ -77,6 +77,33 @@ import rawpy                         # (pip install rawpy)
 #
 import my_camera_data
 
-print(my_camera_data.camera_info)
+# Add working structures to camera info
+#
+for cam_dict in my_camera_data.camera_info:
+    cam_dict['processed'] = False
+    cam_dict['files_with_times'] = []
+    cam_dict['file_number_dict'] = {}
 
+def get_camera_info():
+    #
+    # function for getting the camera_info structure. This is a little cleaner than just using the structure
+    # as a global variable. This should probably be a CameraInfo class.
+    #
+    return my_camera_data.camera_info
+
+
+print(get_camera_info())
+
+for cam in get_camera_info():
+    dirlist = list(sorted(os.listdir(cam['repository_base']), reverse=False))
+    print(cam['name'], dirlist)
+
+    for directory in dirlist:
+        filelist = sorted(os.listdir(cam['repository_base'] + directory))
+        print(directory)
+        for file in filelist:
+            cam['file_number_dict'][file[-8:-4]] = file[-3:]
+            print('   ' + file[-8:-4] + ' ' + file[-3:])
+
+    print(cam['file_number_dict'])
 
