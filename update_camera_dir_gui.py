@@ -99,10 +99,15 @@ from tkinter.scrolledtext import ScrolledText  # not sure why we need to import 
 from tkinter import filedialog
 import tkinter.font                  # GUI font stuff
 from PIL import Image, ImageTk       # (pip install Pillow)
+from PIL.ExifTags import TAGS
+
+
 from resizeimage import resizeimage  # (pip install python-resize-image)
 import numpy as np                   # (pip install numpy)
 import cv2                           # (pip install opencv-python)
 import rawpy                         # (pip install rawpy)
+
+# import piexif
 
 
 #
@@ -172,8 +177,10 @@ def get_camera_info():
     #
     return my_camera_data.camera_info
 
+
 def get_backup_drive_info():
     return my_camera_data.backup_drive_info
+
 
 def get_temp_source_info():
     return my_camera_data.temp_source_info
