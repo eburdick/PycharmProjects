@@ -40,10 +40,30 @@ backup_drive_info = {'drive_pattern': re.compile('.*travel', re.IGNORECASE),
      'cameras': [['Nikon D500', re.compile('.*d500', re.IGNORECASE)],
                 ['Nikon Coolpix B700', re.compile('.*b700', re.IGNORECASE)]]}
 #
-# Starting temp_source_info.  This is a directory tree that contains files to import as a convenience, say for
-# pictures and videos from a friends camera or a smart phone.
+# Data structure to enable accessing files to import as a convenience, say for
+# pictures and videos from a friend's camera or a smart phone.
+# The overall program is for reading and managing files from a known set of cameras with an existing set of
+# repositories. Importing once or twice from a different device does not follow this paradigm unless we have a
+# mechanism for creating repositories on the fly. In my camera_buf directory I have a subdirectory called other-pictures
+# where I put pictures from guest cameras and other devices like phones. Most of the time, with conventional digital
+# cameras, I have been doing the same kind of file renaming I do with my own cameras, but not all picture files in
+# there have exif time data, and smart phone pictures have a variety of file formats, most of which have timestamp
+# components already. To make this feature useful, we want...
+#   - A GUI component to select the source. This might be a phone plugged into the computer, a camera card, a camera
+#     plugged into the computer, a directory containing downloaded pictures, etc. For camera cards, we want to be able
+#     to extract from directories under dcim, but we also want to just pick a directory full of picture files.
+#   - I we want to pick and choose media files from an incoming source, there is functionality in the OS file manager
+#     for this, so the method of choice will be to copy the desired file to a temporary directory and use that as a
+#     source.
+#   - A GUI component to specify a new destination directory under a base like my current V:\camera-buf\other pictures\
+#   - Some renaming options to make sure the timestamp ends up at the beginning of the file name to match the standard
+#     set by our standard repositories.  The simplest thing is to just append it no matter what the picture files look
+#     like, even if the time stamp is duplicated.
+#     - Many times, guests have their camera clocks set wrong, so a way to correct this on the fly would be useful
+#     - If the files do not have exif data, having an alternate way to get timestamp data would be good, if possible.
 #
-temp_source_info = {'initial_path': 'V:\\camera_buf\\'}
+misc_source_info = {'input_start': '', 'input_path': '', 'output_path': '',
+                    'repository_base': 'V:\\Camera-buf\\Other Pictures'}
 
 #
 # list of file extensions for files used by these cameras.

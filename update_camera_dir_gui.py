@@ -182,8 +182,8 @@ def get_backup_drive_info():
     return my_camera_data.backup_drive_info
 
 
-def get_temp_source_info():
-    return my_camera_data.temp_source_info
+def get_misc_source_info():
+    return my_camera_data.misc_source_info
 
 
 #
@@ -931,28 +931,46 @@ def getcard_clicked():
     return
 
 
-class TempSource:
+class MiscSource:
     #
-    # Temp source is a directory tree with the same structure as a backup drive that can serve as an intermediate
-    # location for holding media files for import from sources like smart phones, thumb drives, etc.  This class
+    # Misc source is a path to a source of media files that do not have a corresponding fixed repository.  This
+    # path is set by the user, and is normally a "guest" memory card or device.  This class
     # maintains the state for this mechanism.
     #
-    temp_source_root = None
+    misc_source_root = None
 
     def set(self, root):
-        self.temp_source_root = root
+        self.misc_source_root = root
 
 
 def setsource_clicked():
     #
-    # This button raises a file selection box to allow the user to select an area on the computer to use
-    # as a source for media files.
+    # This button raises a file selection box to allow the user to select a source for media files, normally on
+    # a device or card plugged into the computer.
     #
-    tempsource = TempSource()
-    tempsource.temp_source_root=filedialog.askdirectory(title='Pick Temp Source Directory',
-                                                        initialdir=get_temp_source_info()['initial_path'])
-    print(tempsource.temp_source_root)
+    miscsource = MiscSource()
+    #miscsource.misc_source_root=filedialog.askopenfilenames(initialdir="v:\\", title="Select file",
+     #                         filetypes=(("jpeg files", "*.jpg"), ("all files", "*.*")))
+    #print(root.filename)
 
+    miscsource.misc_source_root=filedialog.askdirectory(title='Pick Misc Source Path')
+    print(miscsource.misc_source_root)
+
+
+def import_clicked():
+    #
+    # This button opens a new window for the import function
+    #
+    about_message = "test window"
+    importwin_top = Toplevel()
+    importwin_top.title("Import Media Files")
+
+    msg = Message(importwin_top, text=about_message)
+    msg.pack()
+    import_source_button = Button(importwin_top, text="Pick Media Source Folder", command = setsource_clicked)
+    import_source_button.pack()
+    dismiss_button = Button(importwin_top, text="Dismiss", command=importwin_top.destroy)
+    dismiss_button.pack()
 
 def copyfiles_clicked():
     #
@@ -1168,10 +1186,11 @@ class PreviewImages:
     #
     img = [None, None]
     #
-    # clear img when and new instance is created. We want img to hold any value it is set to by and instance,
+    # clear img when and new instance is created. We want img to hold any value it is set to by an instance,
     # but we never expect more than one instance at a time, and we test the values before trying to use
     # them, so initializing to None meets those needs
     #
+
     def __init__(self):
         self.img[0] = None
         self.img[1] = None
@@ -1255,7 +1274,7 @@ get_card_info_button = Button(window, text='Get Cam Cards', command=getcard_clic
 #
 # Create a button to set a media file source on the computer
 #
-set_source_button = Button(window, text='Set Temp Source', command=setsource_clicked)
+set_source_button = Button(window, text='Set Import Source', command=import_clicked)
 #
 # create a menu to select summary filter mode
 #
