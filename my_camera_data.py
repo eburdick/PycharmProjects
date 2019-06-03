@@ -33,7 +33,7 @@ camera_info = [
 # This structure is a dictionary with keys 'card_pattern' and 'cameras'
 # 'card_pattern' is a compiled regular expression to match the volume label of the backup drive
 # 'cameras' is a list of tuples, each with a camera name that matches one of the camera_info names above and a
-# compiled regular expression to match a directory for the corrsponding camera. It is assumed that there will be a
+# compiled regular expression to match a directory for the corresponding camera. It is assumed that there will be a
 # DCIM directory below each of these.
 #
 backup_drive_info = {'drive_pattern': re.compile('.*travel', re.IGNORECASE),
@@ -51,18 +51,21 @@ backup_drive_info = {'drive_pattern': re.compile('.*travel', re.IGNORECASE),
 # components already. To make this feature useful, we want...
 #   - A GUI component to select the source. This might be a phone plugged into the computer, a camera card, a camera
 #     plugged into the computer, a directory containing downloaded pictures, etc. For camera cards, we want to be able
-#     to extract from directories under dcim, but we also want to just pick a directory full of picture files.
-#   - I we want to pick and choose media files from an incoming source, there is functionality in the OS file manager
-#     for this, so the method of choice will be to copy the desired file to a temporary directory and use that as a
-#     source.
+#     to extract from directories under dcim, but we also want to just pick a directory full of picture files. Because
+#     we do not want to duplicate functionality that is already available in the OS file manager, the method of choice
+#     is to copy the desired files to a temporary directory and use that as source in all cases, including from cameras
+#     with a standard dcim subdirectory.
 #   - A GUI component to specify a new destination directory under a base like my current V:\camera-buf\other pictures\
 #   - Some renaming options to make sure the timestamp ends up at the beginning of the file name to match the standard
-#     set by our standard repositories.  The simplest thing is to just append it no matter what the picture files look
-#     like, even if the time stamp is duplicated.
+#     set by our standard repositories.  The method of choice here is to totally rename the file starting with the
+#     timestamp we are doing here...yyyymmdd-hhmmss_ followed by a string descriptive of the source, like "ejbpixel2"
+#     for my phone, or "steves_ipad" for a guest device.
 #     - Many times, guests have their camera clocks set wrong, so a way to correct this on the fly would be useful
-#     - If the files do not have exif data, having an alternate way to get timestamp data would be good, if possible.
+#     - If the files do not have exif data, having an alternate way to get timestamp data would be good, if possible,
+#     like the creation timestamp of the file.
 #
-misc_source_info = {'input_start': '', 'input_path': '', 'output_path': '',
+#
+misc_source_info = {'initial_temp_base': '', 'input_path': '', 'output_path': '',
                     'repository_base': 'V:\\Camera-buf\\Other Pictures'}
 
 #

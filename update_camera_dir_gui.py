@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 
 #
-# 
+#
 # The overall goal is to copy files from camera memory cards to the file respository on the computer that corresponds
 # to the camera each memory card came from. File names in the repository are formated as a time code: YYYYMMDD-HHMMSS_
 # followed by the original file name, for example "20170417-130751_dsc_2930.nef" This started out as a camera file
@@ -9,7 +9,7 @@
 # from the file and formats it into the chosen format. This pretty much guarantees that every file will have a unique
 # name over a very long time.
 #
-#     
+#
 # Camera repository directory:
 #     The repository directory tree for each camera is just a set of directories named after the date the files are
 #     copied from the camera. It looks like this:
@@ -17,11 +17,11 @@
 #             2018-05-14
 #             2018-05-18
 #             More subdirectories in the format YYYY-MM-DD
-#     
+#
 # File renaming:
 #     After copying the files to the repository directory, we rename them,
 #     appending the time code as described above from the datetimeoriginal EXIF metadata.
-# 
+#
 # Program flow:
 #     - Scan storage devices plugged into the computer for known camera cards from our cameras. This assumes we know
 #     what name pattern to look for. If there are more than one cards from the same camera, we are going to combine
@@ -73,8 +73,8 @@
 # Special case for camera sequence number rollover: When a Nikon camera file name reaches dsc_9999, then next file
 # name is dsc_0001. With the timestamp added to the beginning, this is generally OK, but if this rollover happens
 # while shooting a burst, then the order can end up wrong if we use the camera file name to break the tie. Does this
-# really matter? Maybe not. Is this an issue when looking for the newest file in the repository? We could end up 
-# copying one or more of the files with the same timestamp to the new repository subdirectory, thus duplicating the 
+# really matter? Maybe not. Is this an issue when looking for the newest file in the repository? We could end up
+# copying one or more of the files with the same timestamp to the new repository subdirectory, thus duplicating the
 # files. Maybe in this case, we do a special test to avoid this. Note this could also be an issue with in-camera
 # edited files as described above.
 
@@ -185,6 +185,8 @@ def get_backup_drive_info():
 def get_misc_source_info():
     return my_camera_data.misc_source_info
 
+def get_misc_source_info():
+    return my_camera_data.misc_source_info
 
 #
 # index constants for files_with_times tuple
@@ -264,6 +266,7 @@ def get_cam_cards_info():
                 {'label': win32api.GetVolumeInformation(drive_path)[VOLUME_NAME],
                  'path': drive_path})
     print(mounted_drives)
+
     #
     # scan all drive labels for matches to our camera cards. Where a match is found:
     #     Increment cam_cards_count
@@ -293,6 +296,10 @@ def get_cam_cards_info():
                     # the card path list for the camera
                     #
                     cam['card_path_list'].append(drive['path'])
+    #
+    # At this point, we have found all of the camera memory cards that match our cameras. Now we look for backup drives
+    # with copies of data from our cameras
+    #
     # scan all drive labels for matches to our backup drives. We assume a backup drive has a structure like this...
     # drive:\camera1\DCIM\directory1\media files...
     #                    \directory2\media files...
@@ -302,6 +309,8 @@ def get_cam_cards_info():
     # backup drive labels will match backup_drive_info['drive_pattern']
     # camera2, camera2, etc come from the camera info dictionaries, cam['card_pattern']
     #
+    # Scan all of the mounted drives again, this time looking for backup drives. A backup drive is identified
+    # by a volume label that matches the pattern in the backup drive info dictionary.
     for drive in mounted_drives:
         drivepath = drive['path']
         if get_backup_drive_info()['drive_pattern'].match(drive['label']):
@@ -315,11 +324,13 @@ def get_cam_cards_info():
             #
             for dir in level_1_dirs:
                 #
-                # loop through cameras
+                # loop through cameras in the camera info list
                 #
                 for cam in get_camera_info():
                     #
-                    # check whether the camera card_pattern matches the directory name
+                    # check whether the camera card_pattern matches the directory name. Remember that these backup
+                    # directories have a specific structure with a directory level that matches the names of our
+                    # cameras.
                     #
                     if cam['card_pattern'].match(dir):
                         cam_cards_count += 1
@@ -345,23 +356,23 @@ def get_cam_cards_info():
                             cam['card_path_list'].append(drive['path']+dir+'\\')
     #
     # check if there is a temp_source directory. This is a temporary location on the computer for importing files
-    # that are not from our regular cameras or backup drives. We require that it have the same structure as our
-    # backup drives:
-    # temp_source_root\camera1\DCIM\directory1\media files...
-    #                              \directory2\media files...
-    #                              ...
-    #                 \camera2\DCIM\directory1\media files...
-    #                              \...
+    # that are not from our regular cameras or backup drives. The user chooses the temp_source directory using the GUI.
+    # This assumes files have already been added to the chosen directory. To keep things simple, we will do batches of
+    # files one at a time.  For example if I want to import files from a cell phone and from a guest's camera, I will
+    # copy the files from a device or devices to one or more temp directories and then use the gui to process each temp
+    # directory one at a time. If there is some kind of directory tree in the temp directory, we do the branches one at
+    # a time. I real life, we are usually dealing with one guest device anyway.
     #
-    # temp_source_root is the root of the directory tree chosen by the user
-    # camera2, camera2, etc come from the camera info dictionaries, cam['card_pattern']
+    # For each device, the file naming convention is likely to be different.  Most cell phones, for example, have the
+    # timestamp somewhere in the file name, while most cameras have a numbered image, like img_0123.jpg. We will provide
+    # some options in the gui for how to rename files or not based on the image file name format.
+    #
     #
     # test if the user has specifed a temp_source_root.  If so, traverse the directories under it and add the files
     # to the camera_info dictionaries as we did above.
     #
-    # !!!Note this code is close to identical to the backup drive code, so we should probably put it into a function
-    # tmpsrc = TempSource()
-    # tmpsrcroot = tmpsrc.temp_source_root
+    # tmpsrc = get_misc_source_info()
+    # tmpsrcroot = tmpsrc.initial_temp_base
     # if tmpsrc.temp_source_root:
     #     #
     #     # we have identified the temp source directory.  Now we scan its top level directories for matches to our
@@ -953,7 +964,9 @@ def setsource_clicked():
      #                         filetypes=(("jpeg files", "*.jpg"), ("all files", "*.*")))
     #print(root.filename)
 
-    miscsource.misc_source_root=filedialog.askdirectory(title='Pick Misc Source Path')
+    miscsource.misc_source_root = filedialog.askdirectory(title='Pick Misc Source Path')
+    #miscsource.misc_source_root = filedialog.askopenfiles(title='Pick Misc Source Path')
+
     print(miscsource.misc_source_root)
 
 
