@@ -360,47 +360,47 @@ def get_cam_cards_info():
     # to the camera_info dictionaries as we did above.
     #
     # !!!Note this code is close to identical to the backup drive code, so we should probably put it into a function
-    tmpsrc = TempSource()
-    tmpsrcroot = tmpsrc.temp_source_root
-    if tmpsrc.temp_source_root:
-        #
-        # we have identified the temp source directory.  Now we scan its top level directories for matches to our
-        # cameras.
-        #
-        level_1_dirs = [d for d in os.listdir(tmpsrcroot) if os.path.isdir(os.path.join(tmpsrcroot, d))]
-        #
-        # loop through level 1 directories
-        #
-        for dir in level_1_dirs:
-            #
-            # loop through cameras
-            #
-            for cam in get_camera_info():
-                #
-                # check whether the camera card_pattern matches the directory name
-                #
-                if cam['card_pattern'].match(dir):
-                    cam_cards_count += 1
-                    #
-                    # add the path to this directory to the camera dictionary
-                    #
-                    if 'card_path_list' not in cam:
-                        #
-                        # The data structure for this camera has not had card data added yet. Here, we add those
-                        # entries...
-                        # - card_path_list with a path to the first card
-                        # - path to a new directory where we will copy the new files.
-                        #
-                        cam['card_path_list'] = [tmpsrcroot + dir + '\\']
-                        cam['today_dir'] = str(date.today())
-                        cam['new_repository_dir'] = cam['repository_base'] + cam['today_dir']
-                    else:
-                        #
-                        # The dictionary for this camera already has entries for a file source, which means we have
-                        # found an additional file source for this camera. We just need to add the path to this
-                        # card to the card path list for the camera
-                        #
-                        cam['card_path_list'].append(tmpsrc.temp_source_root + dir + '\\')
+    # tmpsrc = TempSource()
+    # tmpsrcroot = tmpsrc.temp_source_root
+    # if tmpsrc.temp_source_root:
+    #     #
+    #     # we have identified the temp source directory.  Now we scan its top level directories for matches to our
+    #     # cameras.
+    #     #
+    #     level_1_dirs = [d for d in os.listdir(tmpsrcroot) if os.path.isdir(os.path.join(tmpsrcroot, d))]
+    #     #
+    #     # loop through level 1 directories
+    #     #
+    #     for dir in level_1_dirs:
+    #         #
+    #         # loop through cameras
+    #         #
+    #         for cam in get_camera_info():
+    #             #
+    #             # check whether the camera card_pattern matches the directory name
+    #             #
+    #             if cam['card_pattern'].match(dir):
+    #                 cam_cards_count += 1
+    #                 #
+    #                 # add the path to this directory to the camera dictionary
+    #                 #
+    #                 if 'card_path_list' not in cam:
+    #                     #
+    #                     # The data structure for this camera has not had card data added yet. Here, we add those
+    #                     # entries...
+    #                     # - card_path_list with a path to the first card
+    #                     # - path to a new directory where we will copy the new files.
+    #                     #
+    #                     cam['card_path_list'] = [tmpsrcroot + dir + '\\']
+    #                     cam['today_dir'] = str(date.today())
+    #                     cam['new_repository_dir'] = cam['repository_base'] + cam['today_dir']
+    #                 else:
+    #                     #
+    #                     # The dictionary for this camera already has entries for a file source, which means we have
+    #                     # found an additional file source for this camera. We just need to add the path to this
+    #                     # card to the card path list for the camera
+    #                     #
+    #                     cam['card_path_list'].append(tmpsrc.temp_source_root + dir + '\\')
 
     #
     #
