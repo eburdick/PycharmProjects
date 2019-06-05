@@ -9,6 +9,12 @@
 # from the file and formats it into the chosen format. This pretty much guarantees that every file will have a unique
 # name over a very long time.
 #
+# V1.0 branch: Functionality only for our cameras, with bug fixes and code cleanup only in this branch
+#
+# V1.1 branch: Add a feature for importing files from a temporary directory, not a camera card from one of our cameras.
+# The "temp" directory could lbe a place on a local drive, a network drive, an actual camera card from a guest camera,
+# a phone's file system, etc.
+#
 #
 # Camera repository directory:
 #     The repository directory tree for each camera is just a set of directories named after the date the files are
