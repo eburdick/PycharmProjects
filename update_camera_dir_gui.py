@@ -9,6 +9,7 @@
 # from the file and formats it into the chosen format. This pretty much guarantees that every file will have a unique
 # name over a very long time.
 #
+# V1.0 branch: Functionality only for our cameras, with bug fixes and code cleanup only in this branch
 #
 # Camera repository directory:
 #     The repository directory tree for each camera is just a set of directories named after the date the files are
@@ -354,71 +355,6 @@ def get_cam_cards_info():
                             # card to the card path list for the camera
                             #
                             cam['card_path_list'].append(drive['path']+dir+'\\')
-    #
-    # check if there is a temp_source directory. This is a temporary location on the computer for importing files
-    # that are not from our regular cameras or backup drives. The user chooses the temp_source directory using the GUI.
-    # This assumes files have already been added to the chosen directory. To keep things simple, we will do batches of
-    # files one at a time.  For example if I want to import files from a cell phone and from a guest's camera, I will
-    # copy the files from a device or devices to one or more temp directories and then use the gui to process each temp
-    # directory one at a time. If there is some kind of directory tree in the temp directory, we do the branches one at
-    # a time. I real life, we are usually dealing with one guest device anyway.
-    #
-    # For each device, the file naming convention is likely to be different.  Most cell phones, for example, have the
-    # timestamp somewhere in the file name, while most cameras have a numbered image, like img_0123.jpg. We will provide
-    # some options in the gui for how to rename files or not based on the image file name format.
-    #
-    #
-    # test if the user has specifed a temp_source_root.  If so, traverse the directories under it and add the files
-    # to the camera_info dictionaries as we did above.
-    #
-    # tmpsrc = get_misc_source_info()
-    # tmpsrcroot = tmpsrc.initial_temp_base
-    # if tmpsrc.temp_source_root:
-    #     #
-    #     # we have identified the temp source directory.  Now we scan its top level directories for matches to our
-    #     # cameras.
-    #     #
-    #     level_1_dirs = [d for d in os.listdir(tmpsrcroot) if os.path.isdir(os.path.join(tmpsrcroot, d))]
-    #     #
-    #     # loop through level 1 directories
-    #     #
-    #     for dir in level_1_dirs:
-    #         #
-    #         # loop through cameras
-    #         #
-    #         for cam in get_camera_info():
-    #             #
-    #             # check whether the camera card_pattern matches the directory name
-    #             #
-    #             if cam['card_pattern'].match(dir):
-    #                 cam_cards_count += 1
-    #                 #
-    #                 # add the path to this directory to the camera dictionary
-    #                 #
-    #                 if 'card_path_list' not in cam:
-    #                     #
-    #                     # The data structure for this camera has not had card data added yet. Here, we add those
-    #                     # entries...
-    #                     # - card_path_list with a path to the first card
-    #                     # - path to a new directory where we will copy the new files.
-    #                     #
-    #                     cam['card_path_list'] = [tmpsrcroot + dir + '\\']
-    #                     cam['today_dir'] = str(date.today())
-    #                     cam['new_repository_dir'] = cam['repository_base'] + cam['today_dir']
-    #                 else:
-    #                     #
-    #                     # The dictionary for this camera already has entries for a file source, which means we have
-    #                     # found an additional file source for this camera. We just need to add the path to this
-    #                     # card to the card path list for the camera
-    #                     #
-    #                     cam['card_path_list'].append(tmpsrc.temp_source_root + dir + '\\')
-
-    #
-    #
-    #
-    # At this point, we have found all of the camera data paths in all backup drives and added them to the
-    # appropriate camera data dictionaries.
-    #
 
     # At this point, we have path data for all memory cards and backup drives present. For each source, we want to
     # catalog each of its files with the following information:
@@ -1287,7 +1223,7 @@ get_card_info_button = Button(window, text='Get Cam Cards', command=getcard_clic
 #
 # Create a button to set a media file source on the computer
 #
-set_source_button = Button(window, text='Set Import Source', command=import_clicked)
+#set_source_button = Button(window, text='Set Import Source', command=import_clicked)
 #
 # create a menu to select summary filter mode
 #
@@ -1318,7 +1254,7 @@ exit_button = Button(window, text='Exit', command=exit_button_clicked)
 # Place Window widgets using grid layout
 #
 get_card_info_button.grid(row=0, column=0)
-set_source_button.grid(row=0, column=1)
+#set_source_button.grid(row=0, column=1)
 copy_files_button.grid(row=0, column=2)
 notebook.grid(row=1, column=0, columnspan=3)
 card_info_filter_menu.grid(row=3, column=0, columnspan=2, sticky=W)
