@@ -367,7 +367,7 @@ def get_cam_cards_info():
     # files one at a time.  For example if I want to import files from a cell phone and from a guest's camera, I will
     # copy the files from a device or devices to one or more temp directories and then use the gui to process each temp
     # directory one at a time. If there is some kind of directory tree in the temp directory, we do the branches one at
-    # a time. I real life, we are usually dealing with one guest device anyway.
+    # a time. In real life, we are usually dealing with one guest device anyway.
     #
     # For each device, the file naming convention is likely to be different.  Most cell phones, for example, have the
     # timestamp somewhere in the file name, while most cameras have a numbered image, like img_0123.jpg. We will provide
@@ -377,9 +377,13 @@ def get_cam_cards_info():
     # test if the user has specifed a temp_source_root.  If so, traverse the directories under it and add the files
     # to the camera_info dictionaries as we did above.
     #
-    # tmpsrc = get_misc_source_info()
-    # tmpsrcroot = tmpsrc.initial_temp_base
-    # if tmpsrc.temp_source_root:
+    tmpsrc = get_misc_source_info()
+    tmpsrcroot = tmpsrc.misc_source_directory
+    if tmpsrc.misc_source_directory:
+        print (tmpsrc.misc_source_directory)
+    else:
+        print ('not misc_source_directory')
+
     #     #
     #     # we have identified the temp source directory.  Now we scan its top level directories for matches to our
     #     # cameras.
@@ -954,10 +958,10 @@ class MiscSource:
     # path is set by the user, and is normally a "guest" memory card or device.  This class
     # maintains the state for this mechanism.
     #
-    misc_source_root = None
+    misc_source_directory = None
 
     def set(self, root):
-        self.misc_source_root = root
+        self.misc_source_directory = root
 
 
 def setsource_clicked():
@@ -966,14 +970,14 @@ def setsource_clicked():
     # a device or card plugged into the computer.
     #
     miscsource = MiscSource()
-    #miscsource.misc_source_root=filedialog.askopenfilenames(initialdir="v:\\", title="Select file",
+    #miscsource.misc_source_directory=filedialog.askopenfilenames(initialdir="v:\\", title="Select file",
      #                         filetypes=(("jpeg files", "*.jpg"), ("all files", "*.*")))
     #print(root.filename)
 
-    miscsource.misc_source_root = filedialog.askdirectory(title='Pick Misc Source Path')
-    #miscsource.misc_source_root = filedialog.askopenfiles(title='Pick Misc Source Path')
+    miscsource.misc_source_directory = filedialog.askdirectory(title='Pick Misc Source Path')
+    #miscsource.misc_source_directory = filedialog.askopenfiles(title='Pick Misc Source Path')
 
-    print(miscsource.misc_source_root)
+    print(miscsource.misc_source_directory)
 
 
 def import_clicked():

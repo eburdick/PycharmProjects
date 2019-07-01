@@ -40,33 +40,15 @@ backup_drive_info = {'drive_pattern': re.compile('.*travel', re.IGNORECASE),
      'cameras': [['Nikon D500', re.compile('.*d500', re.IGNORECASE)],
                 ['Nikon Coolpix B700', re.compile('.*b700', re.IGNORECASE)]]}
 #
-# Data structure to enable accessing files to import as a convenience, say for
-# pictures and videos from a friend's camera or a smart phone.
-# The overall program is for reading and managing files from a known set of cameras with an existing set of
-# repositories. Importing once or twice from a different device does not follow this paradigm unless we have a
-# mechanism for creating repositories on the fly. In my camera_buf directory I have a subdirectory called other-pictures
-# where I put pictures from guest cameras and other devices like phones. Most of the time, with conventional digital
-# cameras, I have been doing the same kind of file renaming I do with my own cameras, but not all picture files in
-# there have exif time data, and smart phone pictures have a variety of file formats, most of which have timestamp
-# components already. To make this feature useful, we want...
-#   - A GUI component to select the source. This might be a phone plugged into the computer, a camera card, a camera
-#     plugged into the computer, a directory containing downloaded pictures, etc. For camera cards, we want to be able
-#     to extract from directories under dcim, but we also want to just pick a directory full of picture files. Because
-#     we do not want to duplicate functionality that is already available in the OS file manager, the method of choice
-#     is to copy the desired files to a temporary directory and use that as source in all cases, including from cameras
-#     with a standard dcim subdirectory.
-#   - A GUI component to specify a new destination directory under a base like my current V:\camera-buf\other pictures\
-#   - Some renaming options to make sure the timestamp ends up at the beginning of the file name to match the standard
-#     set by our standard repositories.  The method of choice here is to totally rename the file starting with the
-#     timestamp we are doing here...yyyymmdd-hhmmss_ followed by a string descriptive of the source, like "ejbpixel2"
-#     for my phone, or "steves_ipad" for a guest device.
-#     - Many times, guests have their camera clocks set wrong, so a way to correct this on the fly would be useful
-#     - If the files do not have exif data, having an alternate way to get timestamp data would be good, if possible,
-#     like the creation timestamp of the file.
+# temp source info. This is for importing data from guest cameras. The user will deal with these one directory at
+# a time. For example, we want to import data from a phone and a guest's camera. The user manually copies the files
+# to a temporary directory, then uses this tool's gui to select that directory. The assumption is that all files are
+# in a single level, so all we have to do is copy the files to a subdirectory in our repository directory tree,
+# renaming as needed.
 #
-#
-misc_source_info = {'initial_temp_base': '', 'input_path': '', 'output_path': '',
-                    'repository_base': 'V:\\Camera-buf\\Other Pictures'}
+misc_source_info = {'misc_source_directory': '',
+                    'repository_base': 'V:\\Camera-buf\\',
+                    'repository_directory': ''}
 
 #
 # list of file extensions for files used by these cameras.
