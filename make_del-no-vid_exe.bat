@@ -1,0 +1,1 @@
+pyinstaller --onefile --noconsole --noupx del-no-vid.py

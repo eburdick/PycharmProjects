@@ -1,0 +1,1 @@
+pyinstaller --onefile --noconsole --noupx update_camera_dir_gui.py
