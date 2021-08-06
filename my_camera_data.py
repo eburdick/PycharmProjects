@@ -19,11 +19,19 @@ camera_info = [
     {'name': 'Nikon D500',                                 # D500 camera
      'card_pattern': re.compile('.*d500', re.IGNORECASE),  # pattern: any characters followed by "d500"
      'repository_base': 'V:\\Camera-buf\\nikon-d500\\renamed copies of flash memory\\',
-     'digital_camera_image_path': 'DCIM'},  # camera card directory containing media files
+     'digital_camera_image_path': 'DCIM',  # camera card directory containing media files
+     'fixed_drive_path': ''},  # drive path for network drives with no label
     {'name': 'Nikon Coolpix B700',                         # B700 camera
      'card_pattern': re.compile('.*b700', re.IGNORECASE),  # pattern: any characters followed by "b700"
      'repository_base': 'V:\\Camera-buf\\nikon-coolpix-b700\\renamed copies of flash memory\\',
-     'digital_camera_image_path': 'DCIM'}]
+     'digital_camera_image_path': 'DCIM',
+     'fixed_drive_path': ''},
+    {'name': 'Eds Phone',
+     'card_pattern': re.compile('.*Phpne', re.IGNORECASE),
+     'repository_base': 'V:\\Camera-buf\\eds-phone\\renamed copies of flash memory\\',
+     'digital_camera_image_path': 'DCIM/Camera',
+     'fixed_drive_path': 'P:\\'}  # phone read through mapped network drive. Always set to P:
+]
 #
 # starting backup drive info.  This is for drives that camera information is backed up to while traveling.
 # The assumption is that the drive will have a label like "travel_drive" and a directory for each camera at the
@@ -72,5 +80,5 @@ misc_source_info = {'initial_temp_base': '', 'input_path': '', 'output_path': ''
 # list of file extensions for files used by these cameras.
 #
 PICTURE_EXTENSIONS = ['.jpg', '.JPG', '.nef', '.NEF', '.nrw', '.NRW', '.tif', '.TIF']
-RAW_EXTENSIONS = ['.NEF', '.nef', '.nrw', '.NRW']
+RAW_EXTENSIONS = ['.NEF', '.nef', '.nrw', '.NRW', '.DNG', '.dng']
 VIDEO_EXTENSIONS = ['.MP4', '.mp4', '.MOV', '.mov']

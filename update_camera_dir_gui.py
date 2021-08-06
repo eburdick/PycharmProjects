@@ -265,8 +265,10 @@ def get_cam_cards_info():
         if os.path.exists(drive_path):
             mounted_drives.append(
                 {'label': win32api.GetVolumeInformation(drive_path)[VOLUME_NAME],
-                 'path': drive_path})
+                 'path': drive_path,
+                 'sysname': win32api.GetVolumeInformation(drive_path)[FILENAME]})
     print(mounted_drives)
+
 
     #
     # scan all drive labels for matches to our camera cards. Where a match is found:
