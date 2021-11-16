@@ -515,12 +515,24 @@ def find_repository_last_files():
                 else:
                     #
                     # newest file is the last file in the last populated directory. This assumes all of the file names
-                    # start with a timestamp string, which is our naming standard.
+                    # start with a timestamp string, which is our naming standard, so we remove all files not
+                    # conforming to that standard from the list, creating a new list without those files. In particular,
+                    # this takes care of the permanent hidden thumbnail database file windows adds when the folder is
+                    # viewed as "icons," which would show up at the last file
                     #
-                    cam['repository_last_file'] = sorted(filelist)[-1]
+                    filtered_filelist = []
+                    for test_file in filelist:
+                        if bool(re.match("^[0-9\_\-]*$", test_file[0:15])):
+                            filtered_filelist.append(test_file)
+                    #
+                    # sort the file list and grab the last file on the list, which will be the one with the
+                    # highest time stamp.
+                    last_file = sorted(filtered_filelist)[-1]
+                    # last_file_timestamp = last_file[0:15]
+
+                    cam['repository_last_file'] = last_file
                     break
     return
-
 
 def copy_and_rename():
     #
