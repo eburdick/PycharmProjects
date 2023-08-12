@@ -20,7 +20,7 @@
 #             More subdirectories in the format YYYY-MM-DD
 #
 # File renaming:
-#     After copying the files to the repository directory, we rename them,
+#     While copying the files to the repository directory, we rename them,
 #     appending the time code as described above from the datetimeoriginal EXIF metadata.
 #
 # Program flow:
@@ -49,7 +49,44 @@
 #     the repository newer than the files on a memory card.
 #
 #     - Gaps in the repository due to previous manual copies with mistakes or deletions.
-
+#
+# Updates:
+#
+# 2022-05-16:
+# I have not been recording updates on a regular basis...my bad. There are comments in the GIT repository, so some
+# record exists. At this point, the program is working well, but bugs show up every once in a while and I track them
+# down and fix them. I'm adding a new feature to help keep track of the backed up repository, mostly to find gaps.
+# Problem to solve: if I have a bunch of memory cards with a variety of content, but have not been keeping good track
+# of what is on each card, I have to do a tedious process of accounting for content on the cards vs what has been
+# renamed and added to the repository, and I do find some gaps occasionally. I want to be able to plug in the memory
+# cards I have and have the program search the repository for matches, alerting me when there is not match. The file
+# names on the cards are different from those in the repository because they don't have the timestamp appended, but
+# the original name is at the end of the repository copy, and they should be the same size.
+#
+# New functionality:
+#
+# 1. Repository compare: For each memory card, list all of the files, one on each line, and show where the file is
+#    stored in the repository. If it is not there, note that.
+# 2. Scan the repository, looking for gaps. There should be some filtering, so the entire repository doesn't get
+#    scanned every time. This could be as simple as listing all of the directories and letting the user mark which
+#    one to end with, assuming we scan from the latest one. This could also be set up to do one camera at a time,
+#    though that could also be accomplished by just having camera cards from the one we are intersted in.
+#
+# UI Design:
+#
+# Because we are adding new a new function, and may add more later, this would be a good time to add some kind
+# of function menu. It could be a regular menu bar, but I'm going to go with something more visible, adding an
+# "action menu" and a "go" button. The action menu will include the original copy files function, plus new functions,
+# including the repository compare and the repository scan. So far, all actions get selected after "Get
+# Cam Cards" and the results displayed on the existing Log tab. At least for the first version, this should be
+# good enough. Typically, you would see new files on the card not have matches, and old files do. Later versions
+# might allow the user to pick a non-matching file and specify where to put it, or to move a file to a different
+# directory.
+#
+# For repository gap scan, add a "repos scan" action and a selection menu to pick the oldest directory to
+# scan. There should be room at the top for the action menu and at the bottom for the filter menu. Maybe have a file
+# selection box instead if the filter menu is just too big.
+#
 
 # Notes:
 #
@@ -792,7 +829,7 @@ def exit_button_clicked():
 
 def getcard_clicked():
     #
-    # Populate the camera data structures with information about the correesponding mounted camera cards, including
+    # Populate the camera data structures with information about the corresponding mounted camera cards, including
     # directories and files on the cards and timestamps.
     #
     cam = get_camera_info()
@@ -820,9 +857,14 @@ def getcard_clicked():
     #
     get_card_info_button.config(state=DISABLED)
     #
-    # enable the file copy button
+    # enable the file go button
     #
-    copy_files_button.config(state=NORMAL)
+    go_button.config(state=NORMAL)
+    # copy_files_button.config(state=NORMAL)
+    #
+    # enable the repository compare button
+    #
+    # repos_compare_button.config(state=NORMAL)
     #
     # create the camera memory card summary
     #
@@ -910,12 +952,12 @@ def setsource_clicked():
     # a device or card plugged into the computer.
     #
     miscsource = MiscSource()
-    #miscsource.misc_source_root=filedialog.askopenfilenames(initialdir="v:\\", title="Select file",
-     #                         filetypes=(("jpeg files", "*.jpg"), ("all files", "*.*")))
-    #print(root.filename)
+    # miscsource.misc_source_root=filedialog.askopenfilenames(initialdir="v:\\", title="Select file",
+    #                         filetypes=(("jpeg files", "*.jpg"), ("all files", "*.*")))
+    # print(root.filename)
 
     miscsource.misc_source_root = filedialog.askdirectory(title='Pick Misc Source Path')
-    #miscsource.misc_source_root = filedialog.askopenfiles(title='Pick Misc Source Path')
+    # miscsource.misc_source_root = filedialog.askopenfiles(title='Pick Misc Source Path')
 
     print(miscsource.misc_source_root)
 
@@ -935,7 +977,45 @@ def import_clicked():
     dismiss_button = Button(importwin_top, text="Dismiss", command=importwin_top.destroy)
     dismiss_button.pack()
 
-def copyfiles_clicked():
+
+def repos_compare_clicked():
+    #
+    # Starts compare camera memory files with the existing repository
+    #
+    print("repos compare clicked")
+
+    return
+
+def go_clicked():
+    #
+    # execute the action active in the action menu
+    #
+    if action_menu_selection_var.get() == 'Action: Copy Files':
+        make_today_dir()
+        copy_and_rename()
+        # copy_files_button.config(state=DISABLED)
+        print("copy files action")
+        return
+
+    elif action_menu_selection_var.get() == 'Action: Compare Repos':
+        print("compare repos action")
+        return
+
+    elif action_menu_selection_var.get() == 'Action: Scan Repos':
+        print("scan repos action")
+        return
+
+    else:
+        print("internal error: no action menu match")
+        return
+
+
+def report_action_change(*args):
+    print("action menu changed")
+    print(*args)
+
+
+def copyfiles_clicked(copy_files_button=None):
     #
     # To copy the files from the camera memory files, we create the destination directories, then copy and
     # rename the files to those directories.  When we are done, we disable the button.
@@ -1255,11 +1335,33 @@ status_text = StringVar()
 status_label = Label(window, textvariable=status_text, relief=SUNKEN)
 status_text.set('Status')
 #
+# Create a button for comparing camera card files with existing repository files. It
+# will be initially disabled because camera cards have not been fetched yet.
+#
+action_menu_selection_var = StringVar(window)
+action_menu_selection_var.set("Action: Copy Files")
+action_menu = OptionMenu(window,
+                         action_menu_selection_var,
+                         'Action: Copy Files',
+                         'Action: Compare Repos',
+                         'Action: Scan Repos')
+
+action_menu_selection_var.trace('w', report_action_change)
+
+
+# repos_compare_button = Button(window, text='Repos Compare', command=repos_compare_clicked)
+# repos_compare_button.config(state=DISABLED)
+#
 # Create a button for copying files from the camera card(s) to the repositories and
 # initially disable it (will be enabled when memory card data has been analysed
 #
-copy_files_button = Button(window, text='Copy Files', command=copyfiles_clicked)
-copy_files_button.config(state=DISABLED)
+# copy_files_button = Button(window, text='Copy Files', command=copyfiles_clicked)
+# copy_files_button.config(state=DISABLED)
+#
+# Create a button for executing the action selected by the action menu
+#
+go_button = Button(window, text='GO', command=go_clicked)
+go_button.config(state=DISABLED)
 #
 # Create the exit button
 #
@@ -1268,8 +1370,10 @@ exit_button = Button(window, text='Exit', command=exit_button_clicked)
 # Place Window widgets using grid layout
 #
 get_card_info_button.grid(row=0, column=0)
-#set_source_button.grid(row=0, column=1)
-copy_files_button.grid(row=0, column=2)
+# set_source_button.grid(row=0, column=1)
+action_menu.grid(row=0, column=1)
+# copy_files_button.grid(row=0, column=2)
+go_button.grid(row=0, column=2)
 notebook.grid(row=1, column=0, columnspan=3)
 card_info_filter_menu.grid(row=3, column=0, columnspan=2, sticky=W)
 exit_button.grid(row=3, column=2, sticky=E)
