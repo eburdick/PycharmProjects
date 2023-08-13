@@ -201,12 +201,16 @@ def change_file_times(fname, timestamp):
 #                     eg [('H:\\DCIM\110NIKON\DSC_1234.NEF', '171224-173053')
 #                         ('H:\\DCIM\110NIKON\DSC_1234.JPG', '171224-173053')
 #                         ('J:\\DCIM\110NIKON\DSC_1235.NEF', '171224-173503')...]
+#   'repository_base': comes from looking up the corresponding environment variable set by  'repository_base_env'.
+#                 We assume that every camera in the camera dictionaries has an environment variable set for this.
 #
 
 for cam_dict in my_camera_data.camera_info:
     cam_dict['processed'] = False
     cam_dict['files_with_times'] = []
-
+    print(cam_dict['repository_base_env'])
+    cam_dict['repository_base'] = os.getenv(cam_dict['repository_base_env'])
+    print(cam_dict['repository_base'])
 
 def get_camera_info():
     #

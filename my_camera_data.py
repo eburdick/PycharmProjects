@@ -19,12 +19,16 @@ import re
 # This takes the form of a list of dictionaries, one list element for each camera. Each dictionary contains
 #    'name' The name of the camera
 #    'card_pattern' A regular expression pattern that matches the volume label of that camera's memory card(s)
-#    'repository_base' The path to the top of that camera's directory tree on the computer
+#    'repository_base_env' The user environment variable whose value is the path to the top of that camera's
+#     repository directory tree on the computer. This variable will be accessed to fill in the 'repository_base'
+#     list element below.
 #
 # note this is the starting form of these dictionaries.  More will be added if we find memory cards associated
 # with these cameras as follows:
+#    'repository_base': The value of the environment variable specified by 'repository_base_env'. This is where
+#                        the files from this camera's memory cards get copied.
 #    'processed': Initialized to False and set to True when this dictionary is processed in any way
-#    'files_with_times': Initialized as an empty list. Records the media files on the memory cards for this cameraa
+#    'files_with_times': Initialized as an empty list. Records the media files on the memory cards for this camera
 #                        and their creation timestamps
 #    'card_path_list': a list of paths to memory cards for this camera eg ['H:\','J:\']
 #    'new_repository_dir': path to directory for new files named from today's date, eg
@@ -32,22 +36,22 @@ import re
 camera_info = [
     {'name': 'Nikon Z 50',
      'card_pattern': re.compile('.*Z 50', re.IGNORECASE),  # pattern: any characters followed by "Z 50"
-     'repository_base': 'V:\\Camera-buf\\nikon-z50\\renamed copies of flash memory\\',
+     'repository_base_env': 'cam_repos_z50',
      'digital_camera_image_path': 'DCIM',  # camera card directory containing media files
      'fixed_drive_path': ''},
     {'name': 'Nikon D500',                                 # D500 camera
      'card_pattern': re.compile('.*d500', re.IGNORECASE),  # pattern: any characters followed by "d500"
-     'repository_base': 'V:\\Camera-buf\\nikon-d500\\renamed copies of flash memory\\',
+     'repository_base_env': 'cam_repos_d500',
      'digital_camera_image_path': 'DCIM',  # camera card directory containing media files
      'fixed_drive_path': ''},
     {'name': 'Nikon Coolpix B700',                         # B700 camera
      'card_pattern': re.compile('.*b700', re.IGNORECASE),  # pattern: any characters followed by "b700"
-     'repository_base': 'V:\\Camera-buf\\nikon-coolpix-b700\\renamed copies of flash memory\\',
+     'repository_base_env': 'cam_repos_b700',
      'digital_camera_image_path': 'DCIM',
      'fixed_drive_path': ''},
     {'name': 'Eds Phone',
      'card_pattern': re.compile('.*Phpne', re.IGNORECASE),
-     'repository_base': 'V:\\Camera-buf\\eds-phone\\renamed copies of flash memory\\',
+     'repository_base_env': 'cam_repos_eds_phone',
      'digital_camera_image_path': 'DCIM/Camera',
      'fixed_drive_path': 'P:\\'}  # phone read through mapped network drive. Always set to P:
 ]
