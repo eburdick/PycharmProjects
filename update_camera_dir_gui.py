@@ -14,10 +14,15 @@
 # Camera repository directory:
 #     The repository directory tree for each camera is just a set of directories named after the date the files are
 #     copied from the camera. It looks like this:
-#         base_directory
+#         repository_base
 #             2018-05-14
 #             2018-05-18
 #             More subdirectories in the format YYYY-MM-DD
+#     Each camera has its own repository_base, which is in the repository_common_path, defined by an environment
+#     variable plus the camera specific repository. For example...
+#     v:\camera-buf\camera-repositories                    <- repository_common_path
+#     v:\camera-buf\camera-repositories\nikon-z50          <- repository_base for Z 50 camera
+#     v:\camera-buf\camera-repositories\nikon-b700         <- repository_base for b700 camera
 #
 # File renaming:
 #     While copying the files to the repository directory, we rename them,
@@ -51,6 +56,42 @@
 #     - Gaps in the repository due to previous manual copies with mistakes or deletions.
 #
 # Updates:
+
+# 2023-08-30:
+# The modification mentioned in yesterday's update appears to be working on my main machine. I will update the
+# GIT repository and try it on the laptop.
+
+# 2023-08-29:
+# I am in progress making a signigicant change to how the camera repositories are defined. The motivation for
+# this is that when we go on a trip, I would like to organize the files the same way on my laptop as on my main
+# desktop, including all of the renaming, etc, just by using this program. On the desktop, the camera repositories
+# are kept on a raid 1 volume and automatically mirrored to my NAS box, so I have two raid copies at home, then the
+# main raid is backed up to the cloud every night. I the field, I only have the laptop with its 1TB ssd. For
+# additional backup, I have a .5TB SSD in a USB enclosure. I can use robocopy to mirror the entire laptop
+# repository to the extenal SSD, either with a batch script or creating a process in this program.
+#
+# To deal with having two different repositories, I have created an environment variable that this program can
+# read from the resident computer. In this software that name of that environment variable is defined by the
+# constant REPOSITORY_COMMON_PATH_ENV, initially set to "repository-common-path". It is called "common" because each
+# camera repository will be a subdirectory of it named after the camera, like "nikon-z50". At this point, I have
+# reorganized my four main camera repositories into this configuration and updated the backups, which took a couple
+# of days, because they saw it as deleting a couple of terrabytes and then creating everything again. The necessary
+# changes to update to this new scheme are:
+#   * in camera_info...
+#        * add an entry 'camera_sub_directory': 'nikon-z50' (example for z50 repository)
+#        * remove the initialization of 'repository_base' for each camera.
+#   * in the initialization code...
+#        * access the repository command path from the environment variable and create the camera
+#          'repository_base' dictionary entries by combining the repository common path with the
+#          camera_sub_directory value.
+#   * in the gui code...
+#        * create an "after" event and callback to test whether the above initialization failed because
+#          the environment variable was not defined. If so, pop up an error dialog and exit the program
+#          when the error dialog is dismissed.
+#
+# Fix introduced bugs, resolved IDE warnings. Note some of them were silly and I disabled them, E.G. warning
+# that there is no reference to a given class component if the type turns out to be None, but the code insures
+# that it will never be None.
 #
 # 2022-05-16:
 # I have not been recording updates on a regular basis...my bad. There are comments in the GIT repository, so some
@@ -63,7 +104,7 @@
 # names on the cards are different from those in the repository because they don't have the timestamp appended, but
 # the original name is at the end of the repository copy, and they should be the same size.
 #
-# New functionality:
+# New functionality (in progress):
 #
 # 1. Repository compare: For each memory card, list all of the files, one on each line, and show where the file is
 #    stored in the repository. If it is not there, note that.
@@ -74,7 +115,7 @@
 #
 # UI Design:
 #
-# Because we are adding new a new function, and may add more later, this would be a good time to add some kind
+# Because we are adding a new function, and may add more later, this would be a good time to add some kind
 # of function menu. It could be a regular menu bar, but I'm going to go with something more visible, adding an
 # "action menu" and a "go" button. The action menu will include the original copy files function, plus new functions,
 # including the repository compare and the repository scan. So far, all actions get selected after "Get
@@ -120,38 +161,43 @@
 # Import library modules
 #
 import os
-import shutil          # high level file operations like copy, rename, etc
-import win32api        # windows specific operations (pip install pywin32)
-import win32file       # windows specific file stuff
-import pywintypes      # supports common windows types like times
-import win32con        # windows constants
-import re              # the regular expression module
-import exifread        # media file metadata stuff we use it for getting timestamps (pip install exifread)
-import subprocess      # subprocess utilities for spawning applications like exiftool
-from subprocess import Popen
+import shutil  # high level file operations like copy, rename, etc
+import win32api  # windows specific operations (pip install pywin32)
+import win32file  # windows specific file stuff
+import pywintypes  # supports common windows types like times
+import win32con  # windows constants
+# import re              # the regular expression module
+import exifread  # media file metadata stuff we use it for getting timestamps (pip install exifread)
+# import subprocess      # subprocess utilities for spawning applications like exiftool
+# from subprocess import Popen
 from datetime import datetime, date  # date and time related utilities
-from string import ascii_uppercase   # pretty self explanitory
-from tkinter import *                # GUI stuff
-from tkinter import ttk              # more widgets
+from string import ascii_uppercase  # pretty self explanitory
+from tkinter import *  # GUI stuff
+from tkinter import ttk  # more widgets
 from tkinter.scrolledtext import ScrolledText  # not sure why we need to import a module for scrolled text
 from tkinter import filedialog
-import tkinter.font                  # GUI font stuff
-from PIL import Image, ImageTk       # (pip install Pillow)
-from PIL.ExifTags import TAGS
-
+# import tkinter.font                  # GUI font stuff
+from PIL import Image, ImageTk  # (pip install Pillow)
+# from PIL.ExifTags import TAGS
+from tkinter import messagebox
 
 from resizeimage import resizeimage  # (pip install python-resize-image)
-import numpy as np                   # (pip install numpy)
-import cv2                           # (pip install opencv-python)
-import rawpy                         # (pip install rawpy)
+# import numpy as np                   # (pip install numpy)
+import cv2  # (pip install opencv-python)
+import rawpy  # (pip install rawpy)
 
 # import piexif
-
-
 #
 # import site specific camera information
 #
 import my_camera_data
+
+#
+# environment variable name for the path to the repository directories where we will store our photo files.
+# We use an environment variable so that each computer this runs on can specify a different repository if
+# desired. For example, a travel laptop can have a repository on the laptop.
+#
+REPOSITORY_COMMON_PATH = "cam-repos-command-path"
 
 
 def exiftime_to_file_prefix(exif_time):
@@ -159,7 +205,8 @@ def exiftime_to_file_prefix(exif_time):
     # utility function to reformat the EXIF time format to our file prefix format...
     # YYYY:MM:DD HH:MM:SS --> YYYYMMDD-HHMMSS.
     #
-    return exif_time[0:4]+exif_time[5:7]+exif_time[8:10]+'-'+exif_time[11:13]+exif_time[14:16]+exif_time[17:19]
+    return exif_time[0:4] + exif_time[5:7] + exif_time[8:10] + '-' + exif_time[11:13] + exif_time[14:16] + exif_time[
+                                                                                                           17:19]
 
 
 def change_file_times(fname, timestamp):
@@ -172,6 +219,8 @@ def change_file_times(fname, timestamp):
     #
     newtime = datetime.strptime(timestamp, '%Y%m%d-%H%M%S')  # format matches our renamed file timestamp prefix
     wintime = pywintypes.Time(newtime)
+    print(newtime)
+    print(wintime)
     #
     # create a windows file object from the specified existing file
     #
@@ -191,27 +240,6 @@ def change_file_times(fname, timestamp):
     return
 
 
-#
-# add and initialize working keys and values to the camera dictionaries
-#
-#   'processed': False to inicate no processing has yet been done to this camera info
-#   'files_with_times': Initially an empty list...
-#                 a list of the files and original creation dates of the files on the camera card(s) for this camera
-#                 in the form of a list of 2-tuples (fully expanded file name,time stamp in the form YYMMDD-HHMMSS)
-#                     eg [('H:\\DCIM\110NIKON\DSC_1234.NEF', '171224-173053')
-#                         ('H:\\DCIM\110NIKON\DSC_1234.JPG', '171224-173053')
-#                         ('J:\\DCIM\110NIKON\DSC_1235.NEF', '171224-173503')...]
-#   'repository_base': comes from looking up the corresponding environment variable set by  'repository_base_env'.
-#                 We assume that every camera in the camera dictionaries has an environment variable set for this.
-#
-
-for cam_dict in my_camera_data.camera_info:
-    cam_dict['processed'] = False
-    cam_dict['files_with_times'] = []
-    print(cam_dict['repository_base_env'])
-    cam_dict['repository_base'] = os.getenv(cam_dict['repository_base_env'])
-    print(cam_dict['repository_base'])
-
 def get_camera_info():
     #
     # function for getting the camera_info structure. This is a little cleaner than just using the structure
@@ -227,8 +255,9 @@ def get_backup_drive_info():
 def get_misc_source_info():
     return my_camera_data.misc_source_info
 
-def get_misc_source_info():
-    return my_camera_data.misc_source_info
+
+# def get_misc_source_info():
+#     return my_camera_data.misc_source_info
 
 #
 # index constants for files_with_times tuple
@@ -253,6 +282,10 @@ DIRINFODATELIST = 1
 DATEINFODATE = 0
 DATEINFOFIRSTFILE = 1
 DATEINFOLASTFILE = 2
+#
+# name of environment variable for the common path for camera repositories.
+#
+REPOSITORY_COMMON_PATH_ENV = "cam-repository-common-path"
 
 
 def is_picture_file(file_name):
@@ -308,9 +341,7 @@ def get_cam_cards_info():
                 {'label': win32api.GetVolumeInformation(drive_path)[VOLUME_NAME],
                  'path': drive_path,
                  'sysname': win32api.GetVolumeInformation(drive_path)[FILENAME]})
-    print(mounted_drives)
-
-
+    # print(mounted_drives)
     #
     # scan all drive labels for matches to our camera cards. Where a match is found:
     #     Increment cam_cards_count
@@ -319,9 +350,9 @@ def get_cam_cards_info():
     #         This is the name of the directory that we will create when with copy files from the card(s).
     #
     cam_cards_count = 0
-    for drive in mounted_drives:        # iterate over all mounted drives
-        for cam in get_camera_info():   # for each mounted drive, iterate over our camera definition
-            cam['processed'] = True     # marked this camera as processed
+    for drive in mounted_drives:  # iterate over all mounted drives
+        for cam in get_camera_info():  # for each mounted drive, iterate over our camera definition
+            cam['processed'] = True  # marked this camera as processed
             if cam['card_pattern'].match(drive['label']):  # if the current drive label matches the known camera label
                 cam_cards_count += 1
                 if 'card_path_list' not in cam:
@@ -332,7 +363,7 @@ def get_cam_cards_info():
                     #
                     cam['card_path_list'] = [drive['path']]
                     cam['today_dir'] = str(date.today())
-                    cam['new_repository_dir'] = cam['repository_base']+cam['today_dir']
+                    cam['new_repository_dir'] = cam['repository_base'] + cam['today_dir']
                 else:
                     #
                     # The dictionary for this camera already has entries for a memory card, which means we have
@@ -366,7 +397,7 @@ def get_cam_cards_info():
             #
             # loop through level 1 directories on this backup drive
             #
-            for dir in level_1_dirs:
+            for diridx in level_1_dirs:
                 #
                 # loop through cameras in the camera info list
                 #
@@ -376,7 +407,7 @@ def get_cam_cards_info():
                     # directories have a specific structure with a directory level that matches the names of our
                     # cameras.
                     #
-                    if cam['card_pattern'].match(dir):
+                    if cam['card_pattern'].match(diridx):
                         cam_cards_count += 1
                         #
                         # add the path to this directory to the camera dictionary
@@ -388,7 +419,7 @@ def get_cam_cards_info():
                             # - card_path_list with a path to the first card
                             # - path to a new directory where we will copy the new files.
                             #
-                            cam['card_path_list'] = [drive['path']+dir+'\\']
+                            cam['card_path_list'] = [drive['path'] + diridx + '\\']
                             cam['today_dir'] = str(date.today())
                             cam['new_repository_dir'] = cam['repository_base'] + cam['today_dir']
                         else:
@@ -397,7 +428,7 @@ def get_cam_cards_info():
                             # found an additional file source for this camera. We just need to add the path to this
                             # card to the card path list for the camera
                             #
-                            cam['card_path_list'].append(drive['path']+dir+'\\')
+                            cam['card_path_list'].append(drive['path'] + diridx + '\\')
 
     # At this point, we have path data for all memory cards and backup drives present. For each source, we want to
     # catalog each of its files with the following information:
@@ -417,7 +448,7 @@ def get_cam_cards_info():
     for cam in get_camera_info():
         if 'card_path_list' in cam:
             for path in cam['card_path_list']:
-                for dir_name, subdir_list, file_list in os.walk(path+cam['digital_camera_image_path']):
+                for dir_name, subdir_list, file_list in os.walk(path + cam['digital_camera_image_path']):
                     #
                     # for each file in file_list, combine it with dir_name\ to form the full file path, then get its
                     # time stamp, either by getting the DateTimeOriginal EXIF value (picture files) or the file
@@ -425,7 +456,7 @@ def get_cam_cards_info():
                     # combined to create the card_file_time_list.
                     #
                     for file in file_list:
-                        file_full_path = dir_name+'\\'+file
+                        file_full_path = dir_name + '\\' + file
                         #
                         # skip files in directories more than one deep below DCIM, like thumbnail directories
                         # eg H:\DCIM\100NIKON\.Thumbs.
@@ -437,14 +468,14 @@ def get_cam_cards_info():
                         # it is not a camera generated image directory.
                         #
                         parsed_dir = dir_name.split('\\')
-                        dcim_pos=parsed_dir.index(cam['digital_camera_image_path'])
+                        dcim_pos = parsed_dir.index(cam['digital_camera_image_path'])
                         #
                         # We want the dcim directory to be in the second last position, so we compare list length
                         # to dcim position. Since position counts from 0, the second last position is the one
                         # that matches 2 less than the length.  E.G. list length is 4, and dcim position is 2 (third
                         # item)  If this test fails, we skip the rest of the loop.
                         #
-                        if dcim_pos != len(parsed_dir)-2:
+                        if dcim_pos != len(parsed_dir) - 2:
                             log_text.insert(END, 'Skipping {}\n'.format(file_full_path))
                             continue
                         #
@@ -470,9 +501,9 @@ def get_cam_cards_info():
                             #
                             if 'EXIF DateTimeOriginal' in tags:
                                 cam['files_with_times'].append(
-                                                               (file_full_path,
-                                                                exiftime_to_file_prefix(
-                                                                    str(tags['EXIF DateTimeOriginal']))))
+                                    (file_full_path,
+                                     exiftime_to_file_prefix(
+                                         str(tags['EXIF DateTimeOriginal']))))
                             else:
                                 print('no exif? {}'.format(file_full_path))
                         else:
@@ -501,7 +532,7 @@ def get_cam_cards_info():
             # the base file name and adds it to the end of the timestamp string.
             #
             cam['files_with_times'].sort(reverse=True,
-                                         key=lambda element: element[TIMESTAMP]+element[FILENAME].split(sep='\\')[3])
+                                         key=lambda element: element[TIMESTAMP] + element[FILENAME].split(sep='\\')[3])
             #
             # GUI...update status label with total (for all cameras) number of camera card files found
             #
@@ -509,6 +540,9 @@ def get_cam_cards_info():
             status_label.update()
 
     return cam_cards_count
+
+
+# end of get_cam_cards_info()
 
 
 def make_today_dir():
@@ -547,7 +581,7 @@ def find_repository_last_files():
                     skip_dir = False
                     log_text.insert(END, 'Find last files: Skipping existing today directory {}\n'.format(directory))
                     continue
-                filelist = os.listdir(cam['repository_base']+directory)
+                filelist = os.listdir(cam['repository_base'] + '\\' + directory)
                 cam['repository_last_dir'] = directory + '\\'
                 # skip directory if it is empty
                 if len(filelist) == 0:
@@ -563,7 +597,7 @@ def find_repository_last_files():
                     #
                     filtered_filelist = []
                     for test_file in filelist:
-                        if bool(re.match("^[0-9\_\-]*$", test_file[0:15])):
+                        if bool(re.match("^[0-9_-]*$", test_file[0:15])):
                             filtered_filelist.append(test_file)
                     #
                     # sort the file list and grab the last file on the list, which will be the one with the
@@ -574,6 +608,10 @@ def find_repository_last_files():
                     cam['repository_last_file'] = last_file
                     break
     return
+
+
+# end of function find_repository_last_files()
+
 
 def copy_and_rename():
     #
@@ -586,7 +624,7 @@ def copy_and_rename():
     # modify the file's create, modify and access metadata to match it. Before each copy, we check see if the file is
     # newer than the last repository file, and when this fails to be the case, we break out of the loop.
     #
-    notebook.select(log_page)       # open the notebook to the log page
+    notebook.select(log_page)  # open the notebook to the log page
     notebook.update()
     for cam in get_camera_info():
         #
@@ -601,7 +639,7 @@ def copy_and_rename():
         # prepending the timestamp. Also, change the filesystem timestamps for the file to match its EXIF
         # timestamp.
         #
-        copied_count = 0                                                 # initialize counter for the log
+        copied_count = 0  # initialize counter for the log
         for file_and_time in cam['files_with_times']:
             last_file_timestamp = cam['repository_last_file'][0:15]
             #
@@ -629,7 +667,7 @@ def copy_and_rename():
                     #
                     # Destination file does not exist. Copy the file with the new name created above
                     #
-                    shutil.copy2(file_and_time[FILENAME], dest_path)        # copy to repository with name update
+                    shutil.copy2(file_and_time[FILENAME], dest_path)  # copy to repository with name update
                     change_file_times(dest_path, file_and_time[TIMESTAMP])  # update file timestamps
                     #
                     # post a line to the log. Note \u279C is the "heavy round-tipped rightwards arrow"
@@ -645,6 +683,9 @@ def copy_and_rename():
         log_text.yview_pickplace('end')  # Scroll log text to the bottom
         log_text.update()
     return
+
+
+# end of function copy_and_rename
 
 
 #
@@ -709,10 +750,10 @@ def add_camcards_summary():
             #
             path_list = []
             date_file_list = []  # initialize to prevent Pycharm warning. This value is never used.
-            dir_list = []        # initialize to prevent Pycharm warning. This value is never used.
+            dir_list = []  # initialize to prevent Pycharm warning. This value is never used.
 
             for full_path, timestamp in files_with_times:
-                last_file = new_file        # save old file value for use as last_file.
+                last_file = new_file  # save old file value for use as last_file.
                 #
                 # Iterate through files_with_times
                 #
@@ -731,11 +772,11 @@ def add_camcards_summary():
                 #
                 path_token_count = len(path_tokens)
                 if path_token_count == 4:
-                    new_path = path_tokens[0]+'\\'+path_tokens[1]+'\\'
+                    new_path = path_tokens[0] + '\\' + path_tokens[1] + '\\'
                     new_dir = path_tokens[2]
                     new_file = path_tokens[3]
                 elif path_token_count == 5:
-                    new_path = path_tokens[0]+'\\'+path_tokens[1]+'\\'+path_tokens[2]+'\\'
+                    new_path = path_tokens[0] + '\\' + path_tokens[1] + '\\' + path_tokens[2] + '\\'
                     new_dir = path_tokens[3]
                     new_file = path_tokens[4]
                 else:
@@ -819,8 +860,11 @@ def add_camcards_summary():
 
     return
 
+
+# end of function add_camcards_summary()
+
 #
-# Widget Callbacks
+# GUI Widget Callbacks
 #
 
 
@@ -938,6 +982,9 @@ def getcard_clicked():
     return
 
 
+# end of function get_card_clicked
+
+
 class MiscSource:
     #
     # Misc source is a path to a source of media files that do not have a corresponding fixed repository.  This
@@ -963,7 +1010,7 @@ def setsource_clicked():
     miscsource.misc_source_root = filedialog.askdirectory(title='Pick Misc Source Path')
     # miscsource.misc_source_root = filedialog.askopenfiles(title='Pick Misc Source Path')
 
-    print(miscsource.misc_source_root)
+    # print(miscsource.misc_source_root)
 
 
 def import_clicked():
@@ -976,7 +1023,7 @@ def import_clicked():
 
     msg = Message(importwin_top, text=about_message)
     msg.pack()
-    import_source_button = Button(importwin_top, text="Pick Media Source Folder", command = setsource_clicked)
+    import_source_button = Button(importwin_top, text="Pick Media Source Folder", command=setsource_clicked)
     import_source_button.pack()
     dismiss_button = Button(importwin_top, text="Dismiss", command=importwin_top.destroy)
     dismiss_button.pack()
@@ -986,9 +1033,10 @@ def repos_compare_clicked():
     #
     # Starts compare camera memory files with the existing repository
     #
-    print("repos compare clicked")
+    # print("repos compare clicked")
 
     return
+
 
 def go_clicked():
     #
@@ -998,7 +1046,7 @@ def go_clicked():
         make_today_dir()
         copy_and_rename()
         # copy_files_button.config(state=DISABLED)
-        print("copy files action")
+        # print("copy files action")
         return
 
     elif action_menu_selection_var.get() == 'Action: Compare Repos':
@@ -1012,6 +1060,20 @@ def go_clicked():
     else:
         print("internal error: no action menu match")
         return
+
+
+def check_repository_base(test_repos_base):
+    #
+    # check if the repository base is None. If so, pop up an informative error message and exit.
+    # This is a callback function of the after even of the exit button. We do this test here because
+    # we need the GUI to be running to do the messagebox.showerror call. The
+
+    if test_repos_base is None:
+        messagebox.showerror("Error",
+                             "Environment variable " +
+                             REPOSITORY_COMMON_PATH_ENV +
+                             " is not defined. This sets the path to the camera repository folders.")
+        sys.exit(1)
 
 
 def report_action_change(*args):
@@ -1030,7 +1092,7 @@ def copyfiles_clicked(copy_files_button=None):
     return
 
 
-def card_info_filter_changed(*args):
+def card_info_filter_changed():
     #
     # Callback for option menu change. The main reason we have this is to provide a callback with the right
     # arguments, even though we don't actually use the arguments.  Otherwise, we could just call the getcard button
@@ -1219,7 +1281,6 @@ def on_summary_select(evt):
         # the file is not recognized as a photo or video file.
         #
         if previews.img[i]:
-
             can.canvases[i].delete('all')
             can.canvases[i].create_image(width // 2, height // 2, image=previews.img[i], anchor=CENTER)
 
@@ -1232,6 +1293,7 @@ class PreviewImages:
     # so it survives the garbage collection of its instances.
     #
     img = [None, None]
+
     #
     # clear img when and new instance is created. We want img to hold any value it is set to by an instance,
     # but we never expect more than one instance at a time, and we test the values before trying to use
@@ -1255,6 +1317,7 @@ class ImageCanvases:
     # so it survives the garbage collection of its instances.
     #
     canvases = [None, None]
+
     #
     # initialize canvases when a new instance is created. We want camvases to hold any value it is set to by an
     # instance,
@@ -1264,6 +1327,66 @@ class ImageCanvases:
 
     def set_canvas(self, idx, can):
         self.canvases[idx] = can
+
+
+# end of class ImageCanvases
+
+# ...Start of executable code...
+#
+# add and initialize working keys and values to the camera dictionaries
+#
+#   'processed': False to inicate no processing has yet been done to this camera info
+#   'files_with_times': Initially an empty list...
+#                 a list of the files and original creation dates of the files on the camera card(s) for this camera
+#                 in the form of a list of 2-tuples (fully expanded file name,time stamp in the form YYMMDD-HHMMSS)
+#                     eg [('H:\\DCIM\110NIKON\DSC_1234.NEF', '171224-173053')
+#                         ('H:\\DCIM\110NIKON\DSC_1234.JPG', '171224-173053')
+#                         ('J:\\DCIM\110NIKON\DSC_1235.NEF', '171224-173503')...]
+#   'camera_files_directory': specifies the name of the directory for this camera in the repository. This is added
+#                 to the end of the path defined in the enviroment variable referenced by REPOSITORY_COMMON_PATH_ENV.
+# Examples...
+#
+# <----------repository base------> <repository directory>
+# V:\camera-buf\camera-repositories\nikon-d500
+#                                  \nikon-b700
+#                                  \nikon-z50
+#
+# For travel, the travel laptop looks like this...
+#
+# <----------camera_repository_base--------><camera_files_directory>
+# C:\content\camera-buf\camera-repositories\nikon-d500
+#                                          \nikon-b700
+#                                          \nikon-z50
+# <photo_backup_base><camera_files_directory>
+#    X:\photo-backup\nikon-d500
+#                   \nikon-b700
+#                   \nikon-z50
+# The X: drive is for an extenal backup copy of the files in the field. At home, the repositories are backed
+# up to the cloud and mirrored to an attached NAS
+#
+
+#
+# look up the repository common path environment variable and assign the value to repository_common_path. If this
+# lookup fails, the value with be None. When the GUI finishes starting up, we will check for this, and if it is
+# None, we will pop up an error message and then exit the program.
+#
+repository_common_path = os.getenv(REPOSITORY_COMMON_PATH_ENV)
+
+for cam_dict in my_camera_data.camera_info:
+    # initialize the processed entry and the files_with_times list.
+    cam_dict['processed'] = False
+    cam_dict['files_with_times'] = []
+    #
+    # set the repository base for this camera. This will be the repository command path concatenated with the
+    # camera files directory for this camera. Note that repository_common_path could have the value None at
+    # this point if the environment variable that creates it is undefined. We check for that here and just
+    # set the repository base to a null string, which will never be access because we will fail out of the
+    # program right after the GUI starts.
+    #
+    if repository_common_path is None:
+        cam_dict['repository_base'] = ""
+    else:
+        cam_dict['repository_base'] = repository_common_path + cam_dict['camera_files_directory'] + "\\"
 #
 # Create the main window and set style and size
 #
@@ -1321,7 +1444,7 @@ get_card_info_button = Button(window, text='Get Cam Cards', command=getcard_clic
 #
 # Create a button to set a media file source on the computer
 #
-#set_source_button = Button(window, text='Set Import Source', command=import_clicked)
+# set_source_button = Button(window, text='Set Import Source', command=import_clicked)
 #
 # create a menu to select summary filter mode
 #
@@ -1352,7 +1475,6 @@ action_menu = OptionMenu(window,
 
 action_menu_selection_var.trace('w', report_action_change)
 
-
 # repos_compare_button = Button(window, text='Repos Compare', command=repos_compare_clicked)
 # repos_compare_button.config(state=DISABLED)
 #
@@ -1371,6 +1493,14 @@ go_button.config(state=DISABLED)
 #
 exit_button = Button(window, text='Exit', command=exit_button_clicked)
 #
+# set up an event to trigger a fixed time after the GUI is displayed. We sort of arbitrarily start this
+# delay after the exit_button is placed. It makes sense because it is unlikely the design will change
+# to eliminate the exit button. The after_callback tests the value of repostory_base. If it is None, then
+# the lookup of the environment variable that defines the target repository path, has failed and we pop up
+# a message and exit.
+#
+exit_button.after(100, check_repository_base, repository_common_path)
+#
 # Place Window widgets using grid layout
 #
 get_card_info_button.grid(row=0, column=0)
@@ -1381,16 +1511,16 @@ go_button.grid(row=0, column=2)
 notebook.grid(row=1, column=0, columnspan=3)
 card_info_filter_menu.grid(row=3, column=0, columnspan=2, sticky=W)
 exit_button.grid(row=3, column=2, sticky=E)
-status_label.grid(row=2, column=0, columnspan=3, sticky=E+W)
+status_label.grid(row=2, column=0, columnspan=3, sticky=E + W)
 #
 # Place the card summary list box and its scrollbar in its frame using grid layout
 #
 cardfiles_list_box.grid(column=0, row=0)
-list_scrollbar.grid(column=1, row=0, sticky=N+S)
+list_scrollbar.grid(column=1, row=0, sticky=N + S)
 #
 # Place the log text box to fill its notebook page
 #
-log_text.grid(column=0, row=0, sticky=E+W+N+S)
+log_text.grid(column=0, row=0, sticky=E + W + N + S)
 #
 # place canvases
 #
