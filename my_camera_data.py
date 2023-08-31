@@ -7,12 +7,27 @@ import re
 # directories is where we copy the files from the camera memory cards. Each directory is created and named
 # by the code, based on the current date. But before doing this, we search for the most recent existing file
 # in the camera's repository. If we add a new camera, this will fail, because there are not yet any files
-# from that camera. For now, the workaround is to create a dummy directory corresponding to an earlier date
-# and put a copy of a picture file in there, also from an earlier date. Once the first file copy from the
-# new camera is done, we can delete the dummy file and directory. Obviously, the correct solution is
-# to test for the existance of the repository for the new camera and create it if it is missing, then patch
-# the
+# from that camera. In this case, we will create a respository and skip the part about looking for the
+# latest file, because no files exist yet for that camera.
 #
+# Repository path and directories: The assumption is that we want all of the repositories in the same
+# directory. The initial repository base I was using before writing this program is
+# V:\camera-buf\ and the camera specific repository directories are nikon-d500\exact copies of flash memory.
+# camera-buf is a general camera related directory with lots of stuff in it besides repository stuff. At this
+# point (aug 17, 2023) I am reorganizing this to create a camera-repositories subdirectory and remove the redundant
+# "exact copies of flash memory" level...
+#
+# The repository base directories are specified by user environment variables:
+#     camera_repository_base
+#     photo_backup_base
+#
+# REPOSITORY_BASE_ENV = "camera-repository-base"
+# BACKUP_BASE_ENV = "photo-backup-base"
+
+
+# camera_files_directory is specified in the camera dictionary below. It is always the same for the
+# main repository and the backup repository.
+
 #
 # starting camera and memory card information for our cameras...
 #
@@ -25,33 +40,34 @@ import re
 #
 # note this is the starting form of these dictionaries.  More will be added if we find memory cards associated
 # with these cameras as follows:
-#    'repository_base': The value of the environment variable specified by 'repository_base_env'. This is where
-#                        the files from this camera's memory cards get copied.
+#    'repository_base': The value of the environment variable specified by 'repository_base_env'. This is the
+#                        directory that contains all of our camera specific file directories.
 #    'processed': Initialized to False and set to True when this dictionary is processed in any way
 #    'files_with_times': Initialized as an empty list. Records the media files on the memory cards for this camera
 #                        and their creation timestamps
 #    'card_path_list': a list of paths to memory cards for this camera eg ['H:\','J:\']
 #    'new_repository_dir': path to directory for new files named from today's date, eg
 #                    'V:\Camera-buf\nikon-d500\renamed copies of flash memory\2018-07-27'
+#
 camera_info = [
-    {'name': 'Nikon Z 50',
+    {'name': 'Nikon Z 50',                                 # Z50 camera
      'card_pattern': re.compile('.*Z 50', re.IGNORECASE),  # pattern: any characters followed by "Z 50"
-     'repository_base_env': 'cam_repos_z50',
+     'camera_files_directory': 'nikon-z50',
      'digital_camera_image_path': 'DCIM',  # camera card directory containing media files
      'fixed_drive_path': ''},
     {'name': 'Nikon D500',                                 # D500 camera
      'card_pattern': re.compile('.*d500', re.IGNORECASE),  # pattern: any characters followed by "d500"
-     'repository_base_env': 'cam_repos_d500',
+     'camera_files_directory': 'nikon-d500',
      'digital_camera_image_path': 'DCIM',  # camera card directory containing media files
      'fixed_drive_path': ''},
     {'name': 'Nikon Coolpix B700',                         # B700 camera
      'card_pattern': re.compile('.*b700', re.IGNORECASE),  # pattern: any characters followed by "b700"
-     'repository_base_env': 'cam_repos_b700',
+     'camera_files_directory': 'nikon-b700',
      'digital_camera_image_path': 'DCIM',
      'fixed_drive_path': ''},
     {'name': 'Eds Phone',
-     'card_pattern': re.compile('.*Phpne', re.IGNORECASE),
-     'repository_base_env': 'cam_repos_eds_phone',
+     'card_pattern': re.compile('.*phone', re.IGNORECASE),
+     'camera_files_directory': 'eds_phone',
      'digital_camera_image_path': 'DCIM/Camera',
      'fixed_drive_path': 'P:\\'}  # phone read through mapped network drive. Always set to P:
 ]
