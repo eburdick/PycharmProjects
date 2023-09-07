@@ -56,17 +56,40 @@
 #     - Gaps in the repository due to previous manual copies with mistakes or deletions.
 #
 # Updates:
-
+#
+# 2023-09-07:
+# Finished code to create a new repository from the environment variable for the common path. Added error checks
+# and reporting. Added code to delete the today directory if it is empty. This happens when you try to load a
+# memory card that has already been loaded. Hanging bugs: the code that checks if files have been loaded before
+# really just checks for the date of the last file in the repository for a given camera. If you delete files
+# already in the repository, but leave the last files in place, a subsequent load from the camera card will not
+# restore them. Also if the last file time is shared between two files, like a jpg and the corresponding nef,
+# and you delete one of them, it will not be restored. Most of the time, this will not be a problem because every
+# new picture is newer than stuff in the repository, and the intent is that we do not modify the repository manually.
+# But new functionality to fill in gaps could be added later.
+#
+# 2023-09-03:
+# Two enhancements to avoid some kludges with starting a new repository:
+#
+#     1: Check whether the repository common path exists, and if not, create it. This can be done at the
+#        beginning, in the "after" event callback discussed below. Currently, this is where we check whether
+#        the environment variable was successfully found. It is a pretty natural place to look for the
+#        path defined by the environment variable and create it if missing.
+#
+#     2: check if the repository is new when we look for the chronologically last file in the existing repository.
+#        If the repository is new, there will be no date directories in the common path for each camera, and we
+#        can just create the first one without looking for a last file.
+#
 # 2023-08-30:
 # The modification mentioned in yesterday's update appears to be working on my main machine. I will update the
 # GIT repository and try it on the laptop.
-
+#
 # 2023-08-29:
 # I am in progress making a signigicant change to how the camera repositories are defined. The motivation for
 # this is that when we go on a trip, I would like to organize the files the same way on my laptop as on my main
 # desktop, including all of the renaming, etc, just by using this program. On the desktop, the camera repositories
 # are kept on a raid 1 volume and automatically mirrored to my NAS box, so I have two raid copies at home, then the
-# main raid is backed up to the cloud every night. I the field, I only have the laptop with its 1TB ssd. For
+# main raid is backed up to the cloud every night. In the field, I only have the laptop with its 1TB ssd. For
 # additional backup, I have a .5TB SSD in a USB enclosure. I can use robocopy to mirror the entire laptop
 # repository to the extenal SSD, either with a batch script or creating a process in this program.
 #
@@ -197,7 +220,7 @@ import my_camera_data
 # We use an environment variable so that each computer this runs on can specify a different repository if
 # desired. For example, a travel laptop can have a repository on the laptop.
 #
-REPOSITORY_COMMON_PATH = "cam-repos-command-path"
+REPOSITORY_COMMON_PATH = "cam-repos-common-path"
 
 
 def exiftime_to_file_prefix(exif_time):
@@ -219,8 +242,8 @@ def change_file_times(fname, timestamp):
     #
     newtime = datetime.strptime(timestamp, '%Y%m%d-%H%M%S')  # format matches our renamed file timestamp prefix
     wintime = pywintypes.Time(newtime)
-    print(newtime)
-    print(wintime)
+    # print(newtime)
+    # print(wintime)
     #
     # create a windows file object from the specified existing file
     #
@@ -286,6 +309,12 @@ DATEINFOLASTFILE = 2
 # name of environment variable for the common path for camera repositories.
 #
 REPOSITORY_COMMON_PATH_ENV = "cam-repository-common-path"
+#
+# GUI command path error reporting delay. This is the time from creating the main window to
+# checking for startup condition issues and presenting them to the user. We want this to be before the
+# user clicks on anything, so we set it to a small number of milliseconds
+#
+GUI_USER_ALERT_DELAY = 50  # milliseconds
 
 
 def is_picture_file(file_name):
@@ -347,7 +376,7 @@ def get_cam_cards_info():
     #     Increment cam_cards_count
     #     Add the card's path to 'card_path_list' in the camera's camera_info dictionary
     #     Add a 'new_repository_dir' to each camera data structure that has a corresponging mounted memory card.
-    #         This is the name of the directory that we will create when with copy files from the card(s).
+    #         This is the name of the directory that we will create when we copy files from the card(s).
     #
     cam_cards_count = 0
     for drive in mounted_drives:  # iterate over all mounted drives
@@ -371,6 +400,7 @@ def get_cam_cards_info():
                     # the card path list for the camera
                     #
                     cam['card_path_list'].append(drive['path'])
+                # print(cam)
     #
     # At this point, we have found all of the camera memory cards that match our cameras. Now we look for backup drives
     # with copies of data from our cameras
@@ -574,19 +604,44 @@ def find_repository_last_files():
     #
     for cam in get_camera_info():
         if 'new_repository_dir' in cam:
+            #
+            # dirlist is a list of the directories under this camera's repository base, which
+            # is the path to the directory named after the camera. The directories in this list
+            # are the ones named after dates from previous uses on this program. We sort it in
+            # reverse order, so the one with the latest date will be first.
+            #
             dirlist = list(sorted(os.listdir(cam['repository_base']), reverse=True))
+            #
+            # If we are creating a new repository, there will be no date directories to search for a latest file,
+            # because we are starting from scratch. We test for this here and create a dummy file name dated january
+            # 1, 1970 and return. This dummy file name will be used later.
+            #
+            if not dirlist:
+                cam['repository_last_file'] = '19700101-010101_placeholder'
+                return
+            #
+            # new_repository_dir in the camera dictionary specifies a directory to create for storing new files. It
+            # will be named after the date snapshot we have already taken based on today's date. If that directory is
+            # already there, then we created it is a previous call to this function because we have already processed
+            # a memory card for this camera. In this case, will skip this directory because it will only have fresh
+            # files in it that might be later than the files we are processing for this memory card.
+            #
             skip_dir = os.path.exists(cam['new_repository_dir'])
             for directory in dirlist:
                 if skip_dir:
                     skip_dir = False
                     log_text.insert(END, 'Find last files: Skipping existing today directory {}\n'.format(directory))
-                    continue
+                    continue  # skip to next directory
+                #
+                # Create a list of the files in this directory. repository_base is just the rest of the path to
+                # the directory.
+                #
                 filelist = os.listdir(cam['repository_base'] + '\\' + directory)
                 cam['repository_last_dir'] = directory + '\\'
                 # skip directory if it is empty
                 if len(filelist) == 0:
                     log_text.insert(END, 'Find last files: Skipping empty dir {}\n'.format(directory))
-                    continue
+                    continue  # skip to next directory
                 else:
                     #
                     # newest file is the last file in the last populated directory. This assumes all of the file names
@@ -604,8 +659,12 @@ def find_repository_last_files():
                     # highest time stamp.
                     last_file = sorted(filtered_filelist)[-1]
                     # last_file_timestamp = last_file[0:15]
-
                     cam['repository_last_file'] = last_file
+                    #
+                    # At this point, we are going to break out of the loop, because we have gotten the information
+                    # we needed from the first directory in the list that is not empty. Because the list of directories
+                    # was sorted in reverse order, that would be the one with the latest file in the existing
+                    # repository for this camera.
                     break
     return
 
@@ -1043,10 +1102,22 @@ def go_clicked():
     # execute the action active in the action menu
     #
     if action_menu_selection_var.get() == 'Action: Copy Files':
+        #
+        # add directories to the repository for today's new files. This will only happen for cameras whose memory
+        # cards are in the file system. If no files get copied to them, we will delete them.
+        #
         make_today_dir()
+        #
+        # copy all of the camera card files to the repository, changing their names to add a timestamp. It is possible
+        # that this function does nothing because the files are already in the repository. In this case, we will
+        # delete the resulting empty directories.
+        #
         copy_and_rename()
-        # copy_files_button.config(state=DISABLED)
-        # print("copy files action")
+        #
+        # Delete empty repository directories. This is to handle any case where we created a destination directory in
+        # the repository and did not copy to it.
+        clean_up_empty_repos_dirs()
+        #
         return
 
     elif action_menu_selection_var.get() == 'Action: Compare Repos':
@@ -1062,18 +1133,102 @@ def go_clicked():
         return
 
 
-def check_repository_base(test_repos_base):
+def setup_repositories(arg_repos_common_path, arg_camera_data):
     #
-    # check if the repository base is None. If so, pop up an informative error message and exit.
-    # This is a callback function of the after even of the exit button. We do this test here because
-    # we need the GUI to be running to do the messagebox.showerror call. The
 
-    if test_repos_base is None:
+
+
+    #
+    # Check the status of the arg_repository_common_path. If the environment variable did not exist when we
+    # looked it up (os.getenv() returned None), we are going to exit the program after informing the user.
+    if arg_repos_common_path is None:
         messagebox.showerror("Error",
                              "Environment variable " +
                              REPOSITORY_COMMON_PATH_ENV +
-                             " is not defined. This sets the path to the camera repository folders.")
+                             " is not defined. This sets the path to the camera repository folders. " +
+                             " Please check the value of the environment variable and try again.")
         sys.exit(1)
+
+    # Check if the repository common path exists in the file system. If not, then we want to create it along with the
+    # camera directories that live there, but only after checking with the user if they want a whole new repository.
+    # We will also set a flag that says we had to do this, because in that case, the rest of the code is dealing with
+    # an empty repository, and will need to add the camera directories and skip the find last file part,
+    # the implication being that we want to copy all of the memory card data into this new repository. We should poll
+    # the user on whether to do this so we don't end up building a whole new repository just because of a bad
+    # environment variable.
+
+    if not os.path.exists(arg_repos_common_path):
+        answer = messagebox.askyesno(title='Missing Repository', message="Do you want to create a new one?")
+        if answer:
+            #
+            # user says yes, create a new repository. We do a mkdir call to the operating system in a try block
+            # so we can catch any errors. The except block is our handler, which will report to the user with
+            # a showerror message box.
+            #
+            try:
+                os.mkdir(repository_common_path)
+                # print("creating common_path")
+            except OSError as error:
+                #
+                # The error string is likely to report a file path with backslashes, which come out as double because
+                # a backslash \ is stored as \\ because the backslash is an escape character for things like quotes,
+                # etc, including backslash itself. For error reporting, we don't want to confuse the user, so we
+                # replace the double backlashes with single ones. Of course, we need to escape the backslashes in
+                # our replace call...
+                #
+                error_string = str(error).replace("\\\\", "\\")  # replace \\ with \
+                messagebox.showerror(
+                    title="error creating repository",
+                    message=error_string+" Please check the " +
+                    REPOSITORY_COMMON_PATH_ENV +
+                    " environment variable for syntax errors.")
+                sys.exit(1)
+
+        else:
+            #
+            # user says do not create a new repository. This is probably because the repository common path environment
+            # variable is set wrong and the user needs to fix it.
+            #
+            messagebox.showinfo(title='Exiting', message='Please set environment variable ' +
+                                REPOSITORY_COMMON_PATH_ENV + ' to point to the desired repository')
+            sys.exit(1)
+
+    for cam_dict in arg_camera_data:
+        # initialize the processed entry and the files_with_times list.
+        cam_dict['processed'] = False
+        cam_dict['files_with_times'] = []
+        #
+        # set the repository base for this camera. This will be the repository command path concatenated with the
+        # camera files directory for this camera. Note that repository_common_path could have the value None at
+        # this point if the environment variable that creates it is undefined. We check for that here and just
+        # set the repository base to a null string, which will never be access because we will fail out of the
+        # program right after the GUI starts.
+        #
+        cam_dict['repository_base'] = repository_common_path + cam_dict['camera_files_directory'] + "\\"
+        #
+        # if the path to the camera_files_directory does not exist, create it. This is part of creating a new
+        # directory as approved by the user.
+        #
+        if not os.path.exists(cam_dict['repository_base']):
+            os.mkdir(cam_dict['repository_base'])
+
+
+def clean_up_empty_repos_dirs():
+    for cam in get_camera_info():
+        #
+        # check if new_repository_dir exists in this camera. If not, then there was no memory card from it, so
+        # no directory for today has been created
+        #
+        if "new_repository_dir" in cam:
+            #
+            # check if there is a directory in the file system corresponding to this tag.
+            #
+            if os.path.exists(cam['new_repository_dir']):
+                #
+                # check if the directory is empty. If so we are going to delete it.
+                #
+                if not os.listdir(cam['new_repository_dir']):
+                    os.rmdir(cam['new_repository_dir'])
 
 
 def report_action_change(*args):
@@ -1372,21 +1527,6 @@ class ImageCanvases:
 #
 repository_common_path = os.getenv(REPOSITORY_COMMON_PATH_ENV)
 
-for cam_dict in my_camera_data.camera_info:
-    # initialize the processed entry and the files_with_times list.
-    cam_dict['processed'] = False
-    cam_dict['files_with_times'] = []
-    #
-    # set the repository base for this camera. This will be the repository command path concatenated with the
-    # camera files directory for this camera. Note that repository_common_path could have the value None at
-    # this point if the environment variable that creates it is undefined. We check for that here and just
-    # set the repository base to a null string, which will never be access because we will fail out of the
-    # program right after the GUI starts.
-    #
-    if repository_common_path is None:
-        cam_dict['repository_base'] = ""
-    else:
-        cam_dict['repository_base'] = repository_common_path + cam_dict['camera_files_directory'] + "\\"
 #
 # Create the main window and set style and size
 #
@@ -1394,6 +1534,20 @@ window = Tk()
 s = ttk.Style()
 s.theme_use('xpnative')
 s.configure('window.TFrame', font=('Helvetica', 20))
+#
+# set up an event to trigger a fixed time after the GUI is displayed. We sort of arbitrarily start this
+# delay after the window is created, which avoids having to change this code with GUI changes because
+# the top level window will always be there.
+#
+# The setup_repositories callback tests the value of repository_common_path, then if it is a valid value (if not,
+# the user is informed and we exit the program) it checks whether the path exists, and if not, with the approval of
+# the user, creates the common path. Once the common path is in place, it sets up the individual camera repository
+# paths, creating them if necessary.
+#
+# The delay is arbitrarily set at 100mS because
+# we are not likely to see any user action in the first tenth of a second after the window appears.
+#
+window.after(GUI_USER_ALERT_DELAY, setup_repositories, repository_common_path, get_camera_info())
 #
 # create and size the main window
 #
@@ -1499,7 +1653,7 @@ exit_button = Button(window, text='Exit', command=exit_button_clicked)
 # the lookup of the environment variable that defines the target repository path, has failed and we pop up
 # a message and exit.
 #
-exit_button.after(100, check_repository_base, repository_common_path)
+#exit_button.after(100, check_repository_base, repository_common_path)
 #
 # Place Window widgets using grid layout
 #
